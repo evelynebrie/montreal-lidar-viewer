@@ -467,6 +467,19 @@
         async function loadData() {
             try {
                 updateProgress(5);
+                updateLoadingText('Checking for chunked data...');
+                
+                // Try to load chunked format first
+                try {
+                    const indexResponse = await fetch('web_data/chunks_index.json');
+                    const chunksIndex = await indexResponse.json();
+                    console.log('Chunked data found, loading...');
+                    await loadChunkedData(chunksIndex);
+                    return;
+                } catch (e) {
+                    console.log('No chunked data, trying compressed sample...');
+                }
+                
                 updateLoadingText('Loading metadata...');
                 
                 // Load metadata
@@ -514,9 +527,136 @@
             }
         }
         
+        async function loadChunkedData(index) {
+            document.getElementById('filename').textContent = index.filename;
+            document.getElementById('point-count').textContent = index.total_points.toLocaleString();
+            
+            updateLoadingText(`Loading chunk 1/${index.num_chunks}...`);
+            
+            const allPositions = [];
+            const allColors = [];
+            let totalLoaded = 0;
+            
+            // Load each chunk
+            for (let i = 0; i < index.num_chunks; i++) {
+                const chunk = index.chunks[i];
+                updateProgress(10 + (i / index.num_chunks) * 80);
+                updateLoadingText(`Loading chunk ${i + 1}/${index.num_chunks} (${chunk.point_count.toLocaleString()} points)`);
+                
+                const response = await fetch(`web_data/chunks/${chunk.filename}`);
+                const arrayBuffer = await response.arrayBuffer();
+                
+                // Parse chunk
+                const {positions, colors} = await parseChunkBinary(arrayBuffer, chunk, index);
+                
+                allPositions.push(positions);
+                allColors.push(colors);
+                totalLoaded += chunk.point_count;
+                
+                // Update visual feedback
+                document.getElementById('loaded-count').textContent = totalLoaded.toLocaleString();
+                
+                // Render first chunk immediately for instant feedback
+                if (i === 0) {
+                    createPointCloud(positions, colors);
+                }
+            }
+            
+            // Combine all chunks
+            updateLoadingText('Combining all chunks...');
+            const combinedPositions = new Float32Array(totalLoaded * 3);
+            const combinedColors = new Float32Array(totalLoaded * 3);
+            
+            let offset = 0;
+            for (let i = 0; i < allPositions.length; i++) {
+                combinedPositions.set(allPositions[i], offset);
+                combinedColors.set(allColors[i], offset);
+                offset += allPositions[i].length;
+            }
+            
+            pointsData.positions = combinedPositions;
+            pointsData.colors = combinedColors;
+            pointsData.originalColors = new Float32Array(combinedColors);
+            
+            // Final render with all points
+            updateLoadingText('Rendering full point cloud...');
+            createPointCloud(combinedPositions, combinedColors);
+            
+            updateProgress(100);
+            setTimeout(() => {
+                document.getElementById('loading').classList.add('hidden');
+            }, 500);
+        }
+        
+        async function parseChunkBinary(arrayBuffer, chunkInfo, index) {
+            const dataView = new DataView(arrayBuffer);
+            let offset = 0;
+            
+            // Read header
+            const numPoints = dataView.getUint32(offset, true);
+            offset += 4;
+            
+            const flags = dataView.getUint8(offset);
+            offset += 1;
+            
+            const hasColors = (flags & 1) !== 0;
+            const isQuantized = (flags & 8) !== 0;
+            
+            // Read quantization params
+            const mins = [
+                dataView.getFloat32(offset, true),
+                dataView.getFloat32(offset + 4, true),
+                dataView.getFloat32(offset + 8, true)
+            ];
+            offset += 12;
+            
+            const ranges = [
+                dataView.getFloat32(offset, true),
+                dataView.getFloat32(offset + 4, true),
+                dataView.getFloat32(offset + 8, true)
+            ];
+            offset += 12;
+            
+            // Read and dequantize positions
+            const positions = new Float32Array(numPoints * 3);
+            for (let i = 0; i < numPoints; i++) {
+                const x_q = dataView.getUint16(offset, true); offset += 2;
+                const y_q = dataView.getUint16(offset, true); offset += 2;
+                const z_q = dataView.getUint16(offset, true); offset += 2;
+                
+                positions[i * 3] = (x_q / 65535.0) * ranges[0] + mins[0];
+                positions[i * 3 + 1] = (y_q / 65535.0) * ranges[1] + mins[1];
+                positions[i * 3 + 2] = (z_q / 65535.0) * ranges[2] + mins[2];
+            }
+            
+            // Read colors
+            const colors = new Float32Array(numPoints * 3);
+            if (hasColors) {
+                for (let i = 0; i < numPoints; i++) {
+                    colors[i * 3] = dataView.getUint8(offset++) / 255.0;
+                    colors[i * 3 + 1] = dataView.getUint8(offset++) / 255.0;
+                    colors[i * 3 + 2] = dataView.getUint8(offset++) / 255.0;
+                }
+            } else {
+                // Use elevation coloring
+                const zMin = chunkInfo.bounds.min[2];
+                const zMax = chunkInfo.bounds.max[2];
+                for (let i = 0; i < numPoints; i++) {
+                    const z = positions[i * 3 + 2];
+                    const t = (z - zMin) / (zMax - zMin);
+                    const color = getColorForValue(t, 'viridis');
+                    colors[i * 3] = color.r;
+                    colors[i * 3 + 1] = color.g;
+                    colors[i * 3 + 2] = color.b;
+                }
+            }
+            
+            return {positions, colors};
+        }
+        
         async function loadBinaryData() {
             // Stream the binary file in chunks
-            const response = await fetch('web_data/points.bin');
+            const response = await fetch('web_data/points_optimized.bin');
             const reader = response.body.getReader();
             const contentLength = +response.headers.get('Content-Length');
             
@@ -537,7 +677,7 @@
             }
             
             updateProgress(70);
-            updateLoadingText('Processing binary data...');
+            updateLoadingText('Processing optimized data...');
             
             // Combine chunks
             const allChunks = new Uint8Array(receivedLength);
@@ -547,11 +687,11 @@
                 position += chunk.length;
             }
             
-            // Parse binary with chunking
-            await parseBinaryChunked(allChunks.buffer);
+            // Parse optimized binary
+            await parseOptimizedBinary(allChunks.buffer);
         }
         
-        async function parseBinaryChunked(arrayBuffer) {
+        async function parseOptimizedBinary(arrayBuffer) {
             const dataView = new DataView(arrayBuffer);
             let offset = 0;
             
@@ -563,27 +703,61 @@
             offset += 1;
             
             const hasColors = (flags & 1) !== 0;
+            const hasClassification = (flags & 2) !== 0;
+            const hasIntensity = (flags & 4) !== 0;
+            const isQuantized = (flags & 8) !== 0;
             
             updateLoadingText(`Processing ${numPoints.toLocaleString()} points...`);
             
-            // Process in chunks to avoid memory issues
-            const positions = [];
-            const colors = [];
+            let mins = [0, 0, 0];
+            let ranges = [1, 1, 1];
+            
+            if (isQuantized) {
+                // Read quantization parameters
+                for (let i = 0; i < 3; i++) {
+                    mins[i] = dataView.getFloat32(offset, true);
+                    offset += 4;
+                    ranges[i] = dataView.getFloat32(offset, true);
+                    offset += 4;
+                }
+                console.log('Quantized format detected - dequantizing positions...');
+            }
+            
+            // Process in chunks to avoid blocking
+            const positions = new Float32Array(numPoints * 3);
             
             for (let chunk = 0; chunk < Math.ceil(numPoints / CHUNK_SIZE); chunk++) {
                 const startIdx = chunk * CHUNK_SIZE;
                 const endIdx = Math.min((chunk + 1) * CHUNK_SIZE, numPoints);
                 const chunkSize = endIdx - startIdx;
                 
-                // Read positions for this chunk
-                const chunkPositions = new Float32Array(chunkSize * 3);
-                for (let i = 0; i < chunkSize * 3; i++) {
-                    chunkPositions[i] = dataView.getFloat32(offset, true);
-                    offset += 4;
+                // Read and dequantize positions
+                for (let i = 0; i < chunkSize; i++) {
+                    const idx = startIdx + i;
+                    if (isQuantized) {
+                        // Read uint16 and dequantize to float32
+                        const x_q = dataView.getUint16(offset, true);
+                        offset += 2;
+                        const y_q = dataView.getUint16(offset, true);
+                        offset += 2;
+                        const z_q = dataView.getUint16(offset, true);
+                        offset += 2;
+                        
+                        positions[idx * 3] = (x_q / 65535.0) * ranges[0] + mins[0];
+                        positions[idx * 3 + 1] = (y_q / 65535.0) * ranges[1] + mins[1];
+                        positions[idx * 3 + 2] = (z_q / 65535.0) * ranges[2] + mins[2];
+                    } else {
+                        // Read float32 directly
+                        positions[idx * 3] = dataView.getFloat32(offset, true);
+                        offset += 4;
+                        positions[idx * 3 + 1] = dataView.getFloat32(offset, true);
+                        offset += 4;
+                        positions[idx * 3 + 2] = dataView.getFloat32(offset, true);
+                        offset += 4;
+                    }
                 }
-                positions.push(chunkPositions);
                 
-                const progress = 70 + (chunk / Math.ceil(numPoints / CHUNK_SIZE)) * 20;
+                const progress = 70 + (chunk / Math.ceil(numPoints / CHUNK_SIZE)) * 15;
                 updateProgress(progress);
                 
                 // Allow UI to update
@@ -591,62 +765,48 @@
             }
             
             // Read colors if available
+            const colors = new Float32Array(numPoints * 3);
+            
             if (hasColors) {
-                offset = 4 + 1 + (numPoints * 3 * 4); // Skip to colors section
-                
+                updateLoadingText('Loading RGB colors...');
                 for (let chunk = 0; chunk < Math.ceil(numPoints / CHUNK_SIZE); chunk++) {
                     const startIdx = chunk * CHUNK_SIZE;
                     const endIdx = Math.min((chunk + 1) * CHUNK_SIZE, numPoints);
                     const chunkSize = endIdx - startIdx;
                     
-                    const chunkColors = new Float32Array(chunkSize * 3);
                     for (let i = 0; i < chunkSize; i++) {
-                        chunkColors[i * 3] = dataView.getUint8(offset++) / 255.0;
-                        chunkColors[i * 3 + 1] = dataView.getUint8(offset++) / 255.0;
-                        chunkColors[i * 3 + 2] = dataView.getUint8(offset++) / 255.0;
+                        const idx = startIdx + i;
+                        colors[idx * 3] = dataView.getUint8(offset++) / 255.0;
+                        colors[idx * 3 + 1] = dataView.getUint8(offset++) / 255.0;
+                        colors[idx * 3 + 2] = dataView.getUint8(offset++) / 255.0;
                     }
-                    colors.push(chunkColors);
                     
                     await new Promise(resolve => setTimeout(resolve, 0));
                 }
-            }
-            
-            // Combine all chunks
-            updateLoadingText('Finalizing point cloud...');
-            const allPositions = new Float32Array(numPoints * 3);
-            const allColors = new Float32Array(numPoints * 3);
-            
-            let posOffset = 0;
-            for (let chunk of positions) {
-                allPositions.set(chunk, posOffset);
-                posOffset += chunk.length;
-            }
-            
-            if (hasColors && colors.length > 0) {
-                let colOffset = 0;
-                for (let chunk of colors) {
-                    allColors.set(chunk, colOffset);
-                    colOffset += chunk.length;
-                }
             } else {
-                // Generate from elevation
+                // Generate colors from elevation
+                updateLoadingText('Generating elevation colors...');
+                const zMin = Math.min(...Array.from(positions).filter((_, i) => i % 3 === 2));
+                const zMax = Math.max(...Array.from(positions).filter((_, i) => i % 3 === 2));
+                
                 for (let i = 0; i < numPoints; i++) {
-                    const z = allPositions[i * 3 + 2];
-                    const t = metadata ? 
-                        (z - metadata.bounds.min[2]) / (metadata.bounds.max[2] - metadata.bounds.min[2]) :
-                        z / 100;
+                    const z = positions[i * 3 + 2];
+                    const t = (z - zMin) / (zMax - zMin);
                     const color = getColorForValue(t, 'viridis');
-                    allColors[i * 3] = color.r;
-                    allColors[i * 3 + 1] = color.g;
-                    allColors[i * 3 + 2] = color.b;
+                    colors[i * 3] = color.r;
+                    colors[i * 3 + 1] = color.g;
+                    colors[i * 3 + 2] = color.b;
                 }
             }
             
-            pointsData.positions = allPositions;
-            pointsData.colors = allColors;
-            pointsData.originalColors = new Float32Array(allColors);
+            pointsData.positions = positions;
+            pointsData.colors = colors;
+            pointsData.originalColors = new Float32Array(colors);
             
-            createPointCloud(allPositions, allColors);
+            updateProgress(90);
+            updateLoadingText('Rendering point cloud...');
+            
+            createPointCloud(positions, colors);
             document.getElementById('loaded-count').textContent = numPoints.toLocaleString();
         }
         

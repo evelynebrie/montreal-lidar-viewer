@@ -359,7 +359,6 @@
             <select id="color-mode">
                 <option value="rgb">True Color (RGB)</option>
                 <option value="elevation">Elevation</option>
-                <option value="intensity">Intensity</option>
             </select>
         </div>
         
@@ -382,6 +381,7 @@
         <h3>Dataset Info</h3>
         <p>File: <span class="stat" id="filename">Loading...</span></p>
         <p>Points: <span class="stat" id="point-count">Loading...</span></p>
+        <p>Loaded: <span class="stat" id="loaded-count">0</span></p>
         <p>Area: <span class="stat">1km × 1km tile</span></p>
         <p>Location: <span class="stat">Montreal, QC</span></p>
         <p style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
@@ -394,6 +394,7 @@
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
     
     <script>
         let scene, camera, renderer, controls, pointCloud;
@@ -401,10 +402,12 @@
         let currentColorMode = 'rgb';
         let currentPalette = 'viridis';
         let pointsData = {
-            positions: null,
-            colors: null,
-            originalColors: null
+            positions: [],
+            colors: [],
+            originalColors: []
         };
+        
+        const CHUNK_SIZE = 100000; // Load 100k points at a time
         
         const palettes = {
             viridis: ['#440154', '#414487', '#2a788e', '#22a884', '#7ad151', '#fde725'],
@@ -463,7 +466,7 @@
         
         async function loadData() {
             try {
-                updateProgress(10);
+                updateProgress(5);
                 updateLoadingText('Loading metadata...');
                 
                 // Load metadata
@@ -471,71 +474,33 @@
                 metadata = await metaResponse.json();
                 
                 document.getElementById('filename').textContent = metadata.filename;
+                document.getElementById('point-count').textContent = metadata.point_count.toLocaleString();
                 
-                updateProgress(30);
-                updateLoadingText('Loading point cloud...');
+                updateProgress(15);
+                updateLoadingText('Loading compressed data...');
                 
-                // Load binary format
-                const dataResponse = await fetch('web_data/points.bin');
-                const arrayBuffer = await dataResponse.arrayBuffer();
-                
-                updateProgress(60);
-                updateLoadingText('Processing points...');
-                
-                // Parse binary format
-                const dataView = new DataView(arrayBuffer);
-                let offset = 0;
-                
-                // Read header
-                const numPoints = dataView.getUint32(offset, true);
-                offset += 4;
-                
-                const flags = dataView.getUint8(offset);
-                offset += 1;
-                
-                const hasColors = (flags & 1) !== 0;
-                const hasClassification = (flags & 2) !== 0;
-                const hasIntensity = (flags & 4) !== 0;
-                
-                // Read positions
-                const positions = new Float32Array(numPoints * 3);
-                for (let i = 0; i < numPoints * 3; i++) {
-                    positions[i] = dataView.getFloat32(offset, true);
-                    offset += 4;
+                // Try to load the compressed JSON sample
+                try {
+                    const response = await fetch('web_data/points_sample.json.gz');
+                    const compressedData = await response.arrayBuffer();
+                    
+                    updateProgress(40);
+                    updateLoadingText('Decompressing data...');
+                    
+                    // Decompress using pako
+                    const decompressed = pako.inflate(new Uint8Array(compressedData), { to: 'string' });
+                    const data = JSON.parse(decompressed);
+                    
+                    updateProgress(70);
+                    updateLoadingText('Processing points...');
+                    
+                    await processPointData(data);
+                    
+                } catch (gzError) {
+                    console.log('Compressed file not available, trying binary...');
+                    updateLoadingText('Loading binary data...');
+                    await loadBinaryData();
                 }
-                
-                // Read colors if available
-                let colors;
-                if (hasColors) {
-                    colors = new Float32Array(numPoints * 3);
-                    for (let i = 0; i < numPoints; i++) {
-                        colors[i * 3] = dataView.getUint8(offset++) / 255.0;
-                        colors[i * 3 + 1] = dataView.getUint8(offset++) / 255.0;
-                        colors[i * 3 + 2] = dataView.getUint8(offset++) / 255.0;
-                    }
-                } else {
-                    // Generate colors from elevation if no RGB data
-                    colors = new Float32Array(numPoints * 3);
-                    for (let i = 0; i < numPoints; i++) {
-                        const z = positions[i * 3 + 2];
-                        const t = (z - metadata.bounds.min[2]) / (metadata.bounds.max[2] - metadata.bounds.min[2]);
-                        const color = getColorForValue(t, 'viridis');
-                        colors[i * 3] = color.r;
-                        colors[i * 3 + 1] = color.g;
-                        colors[i * 3 + 2] = color.b;
-                    }
-                }
-                
-                pointsData.positions = positions;
-                pointsData.colors = colors;
-                pointsData.originalColors = new Float32Array(colors); // Store original
-                
-                updateProgress(80);
-                updateLoadingText('Rendering...');
-                
-                createPointCloud(positions, colors);
-                
-                document.getElementById('point-count').textContent = numPoints.toLocaleString();
                 
                 updateProgress(100);
                 setTimeout(() => {
@@ -544,12 +509,186 @@
                 
             } catch (error) {
                 console.error('Error loading data:', error);
-                updateLoadingText('Error loading data - check console');
+                updateLoadingText('Error: ' + error.message);
                 document.getElementById('loading-text').style.color = '#ff0000';
             }
         }
         
+        async function loadBinaryData() {
+            // Stream the binary file in chunks
+            const response = await fetch('web_data/points.bin');
+            const reader = response.body.getReader();
+            const contentLength = +response.headers.get('Content-Length');
+            
+            let receivedLength = 0;
+            let chunks = [];
+            
+            while(true) {
+                const {done, value} = await reader.read();
+                
+                if (done) break;
+                
+                chunks.push(value);
+                receivedLength += value.length;
+                
+                const progress = 15 + (receivedLength / contentLength) * 50;
+                updateProgress(progress);
+                updateLoadingText(`Loading: ${(receivedLength / 1024 / 1024).toFixed(1)}MB / ${(contentLength / 1024 / 1024).toFixed(1)}MB`);
+            }
+            
+            updateProgress(70);
+            updateLoadingText('Processing binary data...');
+            
+            // Combine chunks
+            const allChunks = new Uint8Array(receivedLength);
+            let position = 0;
+            for(let chunk of chunks) {
+                allChunks.set(chunk, position);
+                position += chunk.length;
+            }
+            
+            // Parse binary with chunking
+            await parseBinaryChunked(allChunks.buffer);
+        }
+        
+        async function parseBinaryChunked(arrayBuffer) {
+            const dataView = new DataView(arrayBuffer);
+            let offset = 0;
+            
+            // Read header
+            const numPoints = dataView.getUint32(offset, true);
+            offset += 4;
+            
+            const flags = dataView.getUint8(offset);
+            offset += 1;
+            
+            const hasColors = (flags & 1) !== 0;
+            
+            updateLoadingText(`Processing ${numPoints.toLocaleString()} points...`);
+            
+            // Process in chunks to avoid memory issues
+            const positions = [];
+            const colors = [];
+            
+            for (let chunk = 0; chunk < Math.ceil(numPoints / CHUNK_SIZE); chunk++) {
+                const startIdx = chunk * CHUNK_SIZE;
+                const endIdx = Math.min((chunk + 1) * CHUNK_SIZE, numPoints);
+                const chunkSize = endIdx - startIdx;
+                
+                // Read positions for this chunk
+                const chunkPositions = new Float32Array(chunkSize * 3);
+                for (let i = 0; i < chunkSize * 3; i++) {
+                    chunkPositions[i] = dataView.getFloat32(offset, true);
+                    offset += 4;
+                }
+                positions.push(chunkPositions);
+                
+                const progress = 70 + (chunk / Math.ceil(numPoints / CHUNK_SIZE)) * 20;
+                updateProgress(progress);
+                
+                // Allow UI to update
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
+            
+            // Read colors if available
+            if (hasColors) {
+                offset = 4 + 1 + (numPoints * 3 * 4); // Skip to colors section
+                
+                for (let chunk = 0; chunk < Math.ceil(numPoints / CHUNK_SIZE); chunk++) {
+                    const startIdx = chunk * CHUNK_SIZE;
+                    const endIdx = Math.min((chunk + 1) * CHUNK_SIZE, numPoints);
+                    const chunkSize = endIdx - startIdx;
+                    
+                    const chunkColors = new Float32Array(chunkSize * 3);
+                    for (let i = 0; i < chunkSize; i++) {
+                        chunkColors[i * 3] = dataView.getUint8(offset++) / 255.0;
+                        chunkColors[i * 3 + 1] = dataView.getUint8(offset++) / 255.0;
+                        chunkColors[i * 3 + 2] = dataView.getUint8(offset++) / 255.0;
+                    }
+                    colors.push(chunkColors);
+                    
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                }
+            }
+            
+            // Combine all chunks
+            updateLoadingText('Finalizing point cloud...');
+            const allPositions = new Float32Array(numPoints * 3);
+            const allColors = new Float32Array(numPoints * 3);
+            
+            let posOffset = 0;
+            for (let chunk of positions) {
+                allPositions.set(chunk, posOffset);
+                posOffset += chunk.length;
+            }
+            
+            if (hasColors && colors.length > 0) {
+                let colOffset = 0;
+                for (let chunk of colors) {
+                    allColors.set(chunk, colOffset);
+                    colOffset += chunk.length;
+                }
+            } else {
+                // Generate from elevation
+                for (let i = 0; i < numPoints; i++) {
+                    const z = allPositions[i * 3 + 2];
+                    const t = metadata ? 
+                        (z - metadata.bounds.min[2]) / (metadata.bounds.max[2] - metadata.bounds.min[2]) :
+                        z / 100;
+                    const color = getColorForValue(t, 'viridis');
+                    allColors[i * 3] = color.r;
+                    allColors[i * 3 + 1] = color.g;
+                    allColors[i * 3 + 2] = color.b;
+                }
+            }
+            
+            pointsData.positions = allPositions;
+            pointsData.colors = allColors;
+            pointsData.originalColors = new Float32Array(allColors);
+            
+            createPointCloud(allPositions, allColors);
+            document.getElementById('loaded-count').textContent = numPoints.toLocaleString();
+        }
+        
+        async function processPointData(data) {
+            const positions = new Float32Array(data.positions);
+            const numPoints = positions.length / 3;
+            
+            let colors;
+            if (data.colors && data.colors.length > 0) {
+                colors = new Float32Array(data.colors);
+            } else {
+                colors = new Float32Array(numPoints * 3);
+                for (let i = 0; i < numPoints; i++) {
+                    const z = positions[i * 3 + 2];
+                    const t = metadata ? 
+                        (z - metadata.bounds.min[2]) / (metadata.bounds.max[2] - metadata.bounds.min[2]) :
+                        z / 100;
+                    const color = getColorForValue(t, 'viridis');
+                    colors[i * 3] = color.r;
+                    colors[i * 3 + 1] = color.g;
+                    colors[i * 3 + 2] = color.b;
+                }
+            }
+            
+            pointsData.positions = positions;
+            pointsData.colors = colors;
+            pointsData.originalColors = new Float32Array(colors);
+            
+            updateProgress(90);
+            updateLoadingText('Rendering...');
+            
+            createPointCloud(positions, colors);
+            document.getElementById('loaded-count').textContent = numPoints.toLocaleString();
+        }
+        
         function createPointCloud(positions, colors) {
+            if (pointCloud) {
+                scene.remove(pointCloud);
+                pointCloud.geometry.dispose();
+                pointCloud.material.dispose();
+            }
+            
             const geometry = new THREE.BufferGeometry();
             geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
             geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
@@ -607,10 +746,8 @@
             const colors = new Float32Array(numPoints * 3);
             
             if (currentColorMode === 'rgb') {
-                // Use original RGB colors
                 colors.set(pointsData.originalColors);
             } else if (currentColorMode === 'elevation') {
-                // Color by height
                 for (let i = 0; i < numPoints; i++) {
                     const z = pointsData.positions[i * 3 + 2];
                     const t = metadata ? 

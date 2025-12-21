@@ -31,7 +31,6 @@
             position: relative;
         }
         
-        /* Animated gradient background */
         body::before {
             content: '';
             position: fixed;
@@ -54,7 +53,6 @@
             left: 0;
         }
         
-        /* Control Panel */
         #controls {
             position: fixed;
             top: 20px;
@@ -192,7 +190,6 @@
             box-shadow: 0 4px 16px rgba(0, 217, 255, 0.4);
         }
         
-        /* Info Panel */
         #info {
             position: fixed;
             bottom: 20px;
@@ -228,7 +225,6 @@
             color: var(--text-primary);
         }
         
-        /* Loading Screen */
         #loading {
             position: fixed;
             top: 0;
@@ -286,7 +282,6 @@
             transition: width 0.3s ease;
         }
         
-        /* Title Header */
         #header {
             position: fixed;
             top: 20px;
@@ -315,7 +310,6 @@
             letter-spacing: 1px;
         }
         
-        /* Responsive */
         @media (max-width: 768px) {
             #controls {
                 width: calc(100% - 40px);
@@ -351,13 +345,8 @@
         </div>
         
         <div class="control-group">
-            <label>Point Size <span class="value-display" id="size-value">0.05</span></label>
-            <input type="range" id="point-size" min="0.01" max="0.2" step="0.01" value="0.05">
-        </div>
-        
-        <div class="control-group">
-            <label>Point Density <span class="value-display" id="density-value">100%</span></label>
-            <input type="range" id="density" min="10" max="100" step="10" value="100">
+            <label>Point Size <span class="value-display" id="size-value">0.5</span></label>
+            <input type="range" id="point-size" min="0.1" max="2" step="0.1" value="0.5">
         </div>
         
         <div class="control-group">
@@ -368,22 +357,20 @@
         <div class="control-group">
             <label>Color Mode</label>
             <select id="color-mode">
-                <option value="elevation">Elevation</option>
                 <option value="rgb">True Color (RGB)</option>
+                <option value="elevation">Elevation</option>
                 <option value="intensity">Intensity</option>
-                <option value="classification">Classification</option>
             </select>
         </div>
         
         <div class="control-group">
-            <label>Color Palette</label>
+            <label>Elevation Palette</label>
             <select id="color-palette">
                 <option value="viridis">Viridis</option>
                 <option value="plasma">Plasma</option>
                 <option value="inferno">Inferno</option>
                 <option value="turbo">Turbo</option>
                 <option value="cool">Cool</option>
-                <option value="hot">Hot</option>
             </select>
         </div>
         
@@ -393,7 +380,7 @@
     
     <div id="info">
         <h3>Dataset Info</h3>
-        <p>File: <span class="stat" id="filename">23_2995040F08_DC.laz</span></p>
+        <p>File: <span class="stat" id="filename">Loading...</span></p>
         <p>Points: <span class="stat" id="point-count">Loading...</span></p>
         <p>Area: <span class="stat">1km × 1km tile</span></p>
         <p>Location: <span class="stat">Montreal, QC</span></p>
@@ -407,32 +394,31 @@
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/laz-perf@0.1.1/dist/laz-perf.min.js"></script>
     
     <script>
-        // Initialize Three.js scene
         let scene, camera, renderer, controls, pointCloud;
-        let pointsData = [];
-        let currentColorMode = 'elevation';
+        let metadata = null;
+        let currentColorMode = 'rgb';
         let currentPalette = 'viridis';
+        let pointsData = {
+            positions: null,
+            colors: null,
+            originalColors: null
+        };
         
-        // Color palettes
         const palettes = {
             viridis: ['#440154', '#414487', '#2a788e', '#22a884', '#7ad151', '#fde725'],
             plasma: ['#0d0887', '#6a00a8', '#b12a90', '#e16462', '#fca636', '#f0f921'],
             inferno: ['#000004', '#420a68', '#932667', '#dd513a', '#fca50a', '#fcffa4'],
             turbo: ['#30123b', '#4662d7', '#36a2d4', '#1ae4b6', '#72fe5e', '#faba39'],
-            cool: ['#00ffff', '#0099ff', '#0033ff', '#6600ff', '#9900ff', '#cc00ff'],
-            hot: ['#000000', '#ff0000', '#ffff00', '#ffffff']
+            cool: ['#00ffff', '#0099ff', '#0033ff', '#6600ff', '#9900ff', '#cc00ff']
         };
         
         function init() {
-            // Scene
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x0a0e14);
-            scene.fog = new THREE.Fog(0x0a0e14, 100, 1000);
+            scene.fog = new THREE.Fog(0x0a0e14, 200, 800);
             
-            // Camera
             const container = document.getElementById('canvas-container');
             camera = new THREE.PerspectiveCamera(
                 60,
@@ -440,22 +426,18 @@
                 0.1,
                 10000
             );
-            camera.position.set(50, 50, 100);
+            camera.position.set(100, 100, 200);
             
-            // Renderer
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
             container.appendChild(renderer.domElement);
             
-            // Controls
             controls = new THREE.OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
             controls.dampingFactor = 0.05;
             controls.screenSpacePanning = false;
-            controls.maxPolarAngle = Math.PI / 2;
             
-            // Lights
             const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
             scene.add(ambientLight);
             
@@ -463,83 +445,94 @@
             directionalLight.position.set(50, 100, 50);
             scene.add(directionalLight);
             
-            // Grid helper
             const gridHelper = new THREE.GridHelper(1000, 50, 0x00d9ff, 0x8b95a8);
             gridHelper.material.opacity = 0.1;
             gridHelper.material.transparent = true;
             scene.add(gridHelper);
             
-            // Window resize
             window.addEventListener('resize', onWindowResize);
             
-            // Control listeners
             document.getElementById('point-size').addEventListener('input', updatePointSize);
-            document.getElementById('density').addEventListener('input', updateDensity);
             document.getElementById('height-scale').addEventListener('input', updateHeightScale);
             document.getElementById('color-mode').addEventListener('change', updateColorMode);
             document.getElementById('color-palette').addEventListener('change', updateColorPalette);
             
-            // Start animation
             animate();
+            loadData();
         }
         
-        function loadLAZFile(file) {
-            // Simulate loading for demo - Replace with actual LAZ loading
-            updateProgress(0);
-            
-            // In real implementation, you would use laspy.js or similar
-            // For now, we'll create a demo point cloud
-            setTimeout(() => generateDemoPointCloud(), 100);
-        }
-        
-        function generateDemoPointCloud() {
-            // Generate demo points that look like buildings
-            // In production, this would load from your actual LAZ file
-            const geometry = new THREE.BufferGeometry();
-            const positions = [];
-            const colors = [];
-            
-            // Create building-like structures
-            const numBuildings = 15;
-            for (let b = 0; b < numBuildings; b++) {
-                const bx = (Math.random() - 0.5) * 200;
-                const bz = (Math.random() - 0.5) * 200;
-                const height = 20 + Math.random() * 80;
-                const width = 10 + Math.random() * 20;
+        async function loadData() {
+            try {
+                updateProgress(10);
+                updateLoadingText('Loading metadata...');
                 
-                const pointsPerBuilding = 5000;
-                for (let i = 0; i < pointsPerBuilding; i++) {
-                    const x = bx + (Math.random() - 0.5) * width;
-                    const y = Math.random() * height;
-                    const z = bz + (Math.random() - 0.5) * width;
-                    
-                    positions.push(x, y, z);
-                    
-                    // Color by height
-                    const t = y / 100;
-                    const color = getColorForValue(t, 'viridis');
-                    colors.push(color.r, color.g, color.b);
+                // Load metadata
+                const metaResponse = await fetch('web_data/metadata.json');
+                metadata = await metaResponse.json();
+                
+                document.getElementById('filename').textContent = metadata.filename;
+                
+                updateProgress(30);
+                updateLoadingText('Loading point cloud...');
+                
+                // Try to load the sample first (faster for testing)
+                const dataResponse = await fetch('web_data/points_sample.json.gz');
+                const data = await dataResponse.json();
+                
+                updateProgress(60);
+                updateLoadingText('Processing points...');
+                
+                // Extract positions and colors
+                const positions = new Float32Array(data.positions);
+                const numPoints = positions.length / 3;
+                
+                // Get colors if available
+                let colors;
+                if (data.colors && data.colors.length > 0) {
+                    colors = new Float32Array(data.colors);
+                } else {
+                    // Generate colors from elevation if no RGB data
+                    colors = new Float32Array(numPoints * 3);
+                    for (let i = 0; i < numPoints; i++) {
+                        const z = positions[i * 3 + 2];
+                        const t = (z - metadata.bounds.min[2]) / (metadata.bounds.max[2] - metadata.bounds.min[2]);
+                        const color = getColorForValue(t, 'viridis');
+                        colors[i * 3] = color.r;
+                        colors[i * 3 + 1] = color.g;
+                        colors[i * 3 + 2] = color.b;
+                    }
                 }
                 
-                updateProgress((b + 1) / numBuildings * 100);
-            }
-            
-            // Add ground points
-            for (let i = 0; i < 20000; i++) {
-                const x = (Math.random() - 0.5) * 300;
-                const y = Math.random() * 2;
-                const z = (Math.random() - 0.5) * 300;
+                pointsData.positions = positions;
+                pointsData.colors = colors;
+                pointsData.originalColors = new Float32Array(colors); // Store original
                 
-                positions.push(x, y, z);
-                const color = getColorForValue(0.1, 'viridis');
-                colors.push(color.r, color.g, color.b);
+                updateProgress(80);
+                updateLoadingText('Rendering...');
+                
+                createPointCloud(positions, colors);
+                
+                document.getElementById('point-count').textContent = numPoints.toLocaleString();
+                
+                updateProgress(100);
+                setTimeout(() => {
+                    document.getElementById('loading').classList.add('hidden');
+                }, 500);
+                
+            } catch (error) {
+                console.error('Error loading data:', error);
+                updateLoadingText('Error loading data - check console');
+                document.getElementById('loading-text').style.color = '#ff0000';
             }
-            
-            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        }
+        
+        function createPointCloud(positions, colors) {
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
             
             const material = new THREE.PointsMaterial({
-                size: 0.05,
+                size: 0.5,
                 vertexColors: true,
                 sizeAttenuation: true
             });
@@ -547,19 +540,15 @@
             pointCloud = new THREE.Points(geometry, material);
             scene.add(pointCloud);
             
-            document.getElementById('point-count').textContent = positions.length / 3;
-            
-            // Hide loading screen
-            setTimeout(() => {
-                document.getElementById('loading').classList.add('hidden');
-            }, 500);
-            
-            // Center camera on point cloud
-            const box = new THREE.Box3().setFromObject(pointCloud);
-            const center = box.getCenter(new THREE.Vector3());
+            // Center camera
+            geometry.computeBoundingBox();
+            const box = geometry.boundingBox;
+            const center = new THREE.Vector3();
+            box.getCenter(center);
             controls.target.copy(center);
             
-            const size = box.getSize(new THREE.Vector3());
+            const size = new THREE.Vector3();
+            box.getSize(size);
             const maxDim = Math.max(size.x, size.y, size.z);
             const fov = camera.fov * (Math.PI / 180);
             let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
@@ -571,28 +560,71 @@
         
         function getColorForValue(value, paletteName) {
             const palette = palettes[paletteName];
-            const index = Math.min(Math.floor(value * (palette.length - 1)), palette.length - 1);
-            const colorHex = palette[index];
-            const color = new THREE.Color(colorHex);
-            return color;
+            const t = Math.max(0, Math.min(1, value));
+            const index = Math.min(Math.floor(t * (palette.length - 1)), palette.length - 1);
+            const nextIndex = Math.min(index + 1, palette.length - 1);
+            const localT = (t * (palette.length - 1)) - index;
+            
+            const color1 = new THREE.Color(palette[index]);
+            const color2 = new THREE.Color(palette[nextIndex]);
+            
+            return {
+                r: color1.r + (color2.r - color1.r) * localT,
+                g: color1.g + (color2.g - color1.g) * localT,
+                b: color1.b + (color2.b - color1.b) * localT
+            };
+        }
+        
+        function updateColorMode(e) {
+            currentColorMode = e.target.value;
+            
+            if (!pointCloud || !pointsData.positions) return;
+            
+            const numPoints = pointsData.positions.length / 3;
+            const colors = new Float32Array(numPoints * 3);
+            
+            if (currentColorMode === 'rgb') {
+                // Use original RGB colors
+                colors.set(pointsData.originalColors);
+            } else if (currentColorMode === 'elevation') {
+                // Color by height
+                for (let i = 0; i < numPoints; i++) {
+                    const z = pointsData.positions[i * 3 + 2];
+                    const t = metadata ? 
+                        (z - metadata.bounds.min[2]) / (metadata.bounds.max[2] - metadata.bounds.min[2]) :
+                        z / 100;
+                    const color = getColorForValue(t, currentPalette);
+                    colors[i * 3] = color.r;
+                    colors[i * 3 + 1] = color.g;
+                    colors[i * 3 + 2] = color.b;
+                }
+            }
+            
+            pointCloud.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            pointsData.colors = colors;
+        }
+        
+        function updateColorPalette(e) {
+            currentPalette = e.target.value;
+            if (currentColorMode === 'elevation') {
+                updateColorMode({ target: { value: 'elevation' }});
+            }
         }
         
         function updateProgress(percent) {
             document.getElementById('progress-fill').style.width = percent + '%';
         }
         
+        function updateLoadingText(text) {
+            document.getElementById('loading-text').textContent = text;
+        }
+        
         function updatePointSize(e) {
             const size = parseFloat(e.target.value);
-            document.getElementById('size-value').textContent = size.toFixed(2);
+            document.getElementById('size-value').textContent = size.toFixed(1);
             if (pointCloud) {
                 pointCloud.material.size = size;
             }
-        }
-        
-        function updateDensity(e) {
-            const density = parseInt(e.target.value);
-            document.getElementById('density-value').textContent = density + '%';
-            // In real implementation, adjust point sampling
         }
         
         function updateHeightScale(e) {
@@ -601,17 +633,6 @@
             if (pointCloud) {
                 pointCloud.scale.y = scale;
             }
-        }
-        
-        function updateColorMode(e) {
-            currentColorMode = e.target.value;
-            // Recolor points based on mode
-            // In real implementation, would recalculate colors
-        }
-        
-        function updateColorPalette(e) {
-            currentPalette = e.target.value;
-            // Recolor points with new palette
         }
         
         function resetCamera() {
@@ -658,9 +679,7 @@
             renderer.render(scene, camera);
         }
         
-        // Initialize on load
         init();
-        loadLAZFile();
     </script>
 </body>
 </html>

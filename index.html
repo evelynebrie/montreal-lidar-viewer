@@ -345,8 +345,8 @@
         </div>
         
         <div class="control-group">
-            <label>Point Size <span class="value-display" id="size-value">0.5</span></label>
-            <input type="range" id="point-size" min="0.1" max="2" step="0.1" value="0.5">
+            <label>Point Size <span class="value-display" id="size-value">1.5</span></label>
+            <input type="range" id="point-size" min="0.1" max="3" step="0.1" value="1.5">
         </div>
         
         <div class="control-group">
@@ -602,7 +602,7 @@
             const hasColors = (flags & 1) !== 0;
             const isQuantized = (flags & 8) !== 0;
             
-            // Read quantization params
+            // Read quantization params (these are chunk-local mins/ranges)
             const mins = [
                 dataView.getFloat32(offset, true),
                 dataView.getFloat32(offset + 4, true),
@@ -624,6 +624,8 @@
                 const y_q = dataView.getUint16(offset, true); offset += 2;
                 const z_q = dataView.getUint16(offset, true); offset += 2;
                 
+                // Dequantize - these are already centered relative to global center
+                // So we just dequantize, no additional offset needed
                 positions[i * 3] = (x_q / 65535.0) * ranges[0] + mins[0];
                 positions[i * 3 + 1] = (y_q / 65535.0) * ranges[1] + mins[1];
                 positions[i * 3 + 2] = (z_q / 65535.0) * ranges[2] + mins[2];
@@ -632,19 +634,23 @@
             // Read colors
             const colors = new Float32Array(numPoints * 3);
             if (hasColors) {
+                console.log(`Chunk has RGB colors - loading ${numPoints} colors`);
                 for (let i = 0; i < numPoints; i++) {
                     colors[i * 3] = dataView.getUint8(offset++) / 255.0;
                     colors[i * 3 + 1] = dataView.getUint8(offset++) / 255.0;
                     colors[i * 3 + 2] = dataView.getUint8(offset++) / 255.0;
                 }
+                // Log first color as sample
+                console.log(`Sample RGB: [${colors[0].toFixed(3)}, ${colors[1].toFixed(3)}, ${colors[2].toFixed(3)}]`);
             } else {
-                // Use elevation coloring
-                const zMin = chunkInfo.bounds.min[2];
-                const zMax = chunkInfo.bounds.max[2];
+                console.log('No RGB data - using elevation coloring');
+                // Use elevation coloring from global bounds
+                const globalZMin = index.bounds.min[2];
+                const globalZMax = index.bounds.max[2];
                 for (let i = 0; i < numPoints; i++) {
                     const z = positions[i * 3 + 2];
-                    const t = (z - zMin) / (zMax - zMin);
-                    const color = getColorForValue(t, 'viridis');
+                    const t = (z - globalZMin) / (globalZMax - globalZMin);
+                    const color = getColorForValue(Math.max(0, Math.min(1, t)), 'viridis');
                     colors[i * 3] = color.r;
                     colors[i * 3 + 1] = color.g;
                     colors[i * 3 + 2] = color.b;
@@ -854,7 +860,7 @@
             geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
             
             const material = new THREE.PointsMaterial({
-                size: 0.5,
+                size: 1.5,
                 vertexColors: true,
                 sizeAttenuation: true
             });

@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Montreal LiDAR 3D Viewer</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=JetBrains+Mono:wght@300;400&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            --bg-dark: #0a0e14;
+            --bg-panel: rgba(15, 20, 28, 0.85);
+            --accent-cyan: #00d9ff;
+            --accent-pink: #ff00aa;
+            --text-primary: #e6e8eb;
+            --text-secondary: #8b95a8;
+            --border: rgba(255, 255, 255, 0.1);
+        }
+        
+        body {
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            overflow: hidden;
+            position: relative;
+        }
+        
+        /* Animated gradient background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(0, 217, 255, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(255, 0, 170, 0.08) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: -1;
+        }
+        
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        /* Control Panel */
+        #controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            min-width: 280px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            z-index: 100;
+            transition: transform 0.3s ease;
+        }
+        
+        #controls.collapsed {
+            transform: translateX(320px);
+        }
+        
+        .control-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .control-header h2 {
+            font-family: 'Space Mono', monospace;
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-pink));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .toggle-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        
+        .toggle-btn:hover {
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }
+        
+        .control-group {
+            margin-bottom: 16px;
+        }
+        
+        .control-group label {
+            display: block;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-pink));
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 217, 255, 0.4);
+        }
+        
+        input[type="range"]::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-pink));
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+        }
+        
+        .value-display {
+            display: inline-block;
+            float: right;
+            font-size: 11px;
+            color: var(--accent-cyan);
+            font-weight: 400;
+        }
+        
+        select, button {
+            width: 100%;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        select:hover, button:hover {
+            border-color: var(--accent-cyan);
+            background: rgba(0, 217, 255, 0.1);
+        }
+        
+        button {
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-pink));
+            border: none;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 8px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(0, 217, 255, 0.4);
+        }
+        
+        /* Info Panel */
+        #info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 20px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            max-width: 400px;
+        }
+        
+        #info h3 {
+            font-family: 'Space Mono', monospace;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            color: var(--accent-cyan);
+        }
+        
+        #info p {
+            font-size: 11px;
+            line-height: 1.6;
+            color: var(--text-secondary);
+            margin: 4px 0;
+        }
+        
+        .stat {
+            font-family: 'Space Mono', monospace;
+            color: var(--text-primary);
+        }
+        
+        /* Loading Screen */
+        #loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-dark);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            transition: opacity 0.5s ease;
+        }
+        
+        #loading.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent-cyan);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        #loading-text {
+            margin-top: 20px;
+            font-size: 14px;
+            color: var(--text-secondary);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+        
+        #progress-bar {
+            width: 300px;
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+            margin-top: 16px;
+            overflow: hidden;
+        }
+        
+        #progress-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--accent-cyan), var(--accent-pink));
+            transition: width 0.3s ease;
+        }
+        
+        /* Title Header */
+        #header {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 50;
+        }
+        
+        #header h1 {
+            font-family: 'Space Mono', monospace;
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-pink));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin: 0;
+            text-shadow: 0 0 30px rgba(0, 217, 255, 0.3);
+        }
+        
+        #header p {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+            letter-spacing: 1px;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            #controls {
+                width: calc(100% - 40px);
+                max-width: 320px;
+            }
+            
+            #info {
+                max-width: calc(100% - 40px);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">
+        <div class="spinner"></div>
+        <div id="loading-text">Loading LiDAR Data</div>
+        <div id="progress-bar">
+            <div id="progress-fill"></div>
+        </div>
+    </div>
+    
+    <div id="header">
+        <h1>MTL LiDAR</h1>
+        <p>Interactive 3D Point Cloud</p>
+    </div>
+    
+    <div id="canvas-container"></div>
+    
+    <div id="controls">
+        <div class="control-header">
+            <h2>Controls</h2>
+            <button class="toggle-btn" onclick="toggleControls()">Hide</button>
+        </div>
+        
+        <div class="control-group">
+            <label>Point Size <span class="value-display" id="size-value">0.05</span></label>
+            <input type="range" id="point-size" min="0.01" max="0.2" step="0.01" value="0.05">
+        </div>
+        
+        <div class="control-group">
+            <label>Point Density <span class="value-display" id="density-value">100%</span></label>
+            <input type="range" id="density" min="10" max="100" step="10" value="100">
+        </div>
+        
+        <div class="control-group">
+            <label>Height Exaggeration <span class="value-display" id="height-value">1.0x</span></label>
+            <input type="range" id="height-scale" min="0.5" max="3" step="0.1" value="1">
+        </div>
+        
+        <div class="control-group">
+            <label>Color Mode</label>
+            <select id="color-mode">
+                <option value="elevation">Elevation</option>
+                <option value="rgb">True Color (RGB)</option>
+                <option value="intensity">Intensity</option>
+                <option value="classification">Classification</option>
+            </select>
+        </div>
+        
+        <div class="control-group">
+            <label>Color Palette</label>
+            <select id="color-palette">
+                <option value="viridis">Viridis</option>
+                <option value="plasma">Plasma</option>
+                <option value="inferno">Inferno</option>
+                <option value="turbo">Turbo</option>
+                <option value="cool">Cool</option>
+                <option value="hot">Hot</option>
+            </select>
+        </div>
+        
+        <button onclick="resetCamera()">Reset View</button>
+        <button onclick="toggleFullscreen()">Fullscreen</button>
+    </div>
+    
+    <div id="info">
+        <h3>Dataset Info</h3>
+        <p>File: <span class="stat" id="filename">23_2995040F08_DC.laz</span></p>
+        <p>Points: <span class="stat" id="point-count">Loading...</span></p>
+        <p>Area: <span class="stat">1km × 1km tile</span></p>
+        <p>Location: <span class="stat">Montreal, QC</span></p>
+        <p style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
+            <strong>Controls:</strong><br>
+            Left Click + Drag: Rotate<br>
+            Right Click + Drag: Pan<br>
+            Scroll: Zoom
+        </p>
+    </div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/laz-perf@0.1.1/dist/laz-perf.min.js"></script>
+    
+    <script>
+        // Initialize Three.js scene
+        let scene, camera, renderer, controls, pointCloud;
+        let pointsData = [];
+        let currentColorMode = 'elevation';
+        let currentPalette = 'viridis';
+        
+        // Color palettes
+        const palettes = {
+            viridis: ['#440154', '#414487', '#2a788e', '#22a884', '#7ad151', '#fde725'],
+            plasma: ['#0d0887', '#6a00a8', '#b12a90', '#e16462', '#fca636', '#f0f921'],
+            inferno: ['#000004', '#420a68', '#932667', '#dd513a', '#fca50a', '#fcffa4'],
+            turbo: ['#30123b', '#4662d7', '#36a2d4', '#1ae4b6', '#72fe5e', '#faba39'],
+            cool: ['#00ffff', '#0099ff', '#0033ff', '#6600ff', '#9900ff', '#cc00ff'],
+            hot: ['#000000', '#ff0000', '#ffff00', '#ffffff']
+        };
+        
+        function init() {
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0e14);
+            scene.fog = new THREE.Fog(0x0a0e14, 100, 1000);
+            
+            // Camera
+            const container = document.getElementById('canvas-container');
+            camera = new THREE.PerspectiveCamera(
+                60,
+                window.innerWidth / window.innerHeight,
+                0.1,
+                10000
+            );
+            camera.position.set(50, 50, 100);
+            
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+            
+            // Controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.screenSpacePanning = false;
+            controls.maxPolarAngle = Math.PI / 2;
+            
+            // Lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(50, 100, 50);
+            scene.add(directionalLight);
+            
+            // Grid helper
+            const gridHelper = new THREE.GridHelper(1000, 50, 0x00d9ff, 0x8b95a8);
+            gridHelper.material.opacity = 0.1;
+            gridHelper.material.transparent = true;
+            scene.add(gridHelper);
+            
+            // Window resize
+            window.addEventListener('resize', onWindowResize);
+            
+            // Control listeners
+            document.getElementById('point-size').addEventListener('input', updatePointSize);
+            document.getElementById('density').addEventListener('input', updateDensity);
+            document.getElementById('height-scale').addEventListener('input', updateHeightScale);
+            document.getElementById('color-mode').addEventListener('change', updateColorMode);
+            document.getElementById('color-palette').addEventListener('change', updateColorPalette);
+            
+            // Start animation
+            animate();
+        }
+        
+        function loadLAZFile(file) {
+            // Simulate loading for demo - Replace with actual LAZ loading
+            updateProgress(0);
+            
+            // In real implementation, you would use laspy.js or similar
+            // For now, we'll create a demo point cloud
+            setTimeout(() => generateDemoPointCloud(), 100);
+        }
+        
+        function generateDemoPointCloud() {
+            // Generate demo points that look like buildings
+            // In production, this would load from your actual LAZ file
+            const geometry = new THREE.BufferGeometry();
+            const positions = [];
+            const colors = [];
+            
+            // Create building-like structures
+            const numBuildings = 15;
+            for (let b = 0; b < numBuildings; b++) {
+                const bx = (Math.random() - 0.5) * 200;
+                const bz = (Math.random() - 0.5) * 200;
+                const height = 20 + Math.random() * 80;
+                const width = 10 + Math.random() * 20;
+                
+                const pointsPerBuilding = 5000;
+                for (let i = 0; i < pointsPerBuilding; i++) {
+                    const x = bx + (Math.random() - 0.5) * width;
+                    const y = Math.random() * height;
+                    const z = bz + (Math.random() - 0.5) * width;
+                    
+                    positions.push(x, y, z);
+                    
+                    // Color by height
+                    const t = y / 100;
+                    const color = getColorForValue(t, 'viridis');
+                    colors.push(color.r, color.g, color.b);
+                }
+                
+                updateProgress((b + 1) / numBuildings * 100);
+            }
+            
+            // Add ground points
+            for (let i = 0; i < 20000; i++) {
+                const x = (Math.random() - 0.5) * 300;
+                const y = Math.random() * 2;
+                const z = (Math.random() - 0.5) * 300;
+                
+                positions.push(x, y, z);
+                const color = getColorForValue(0.1, 'viridis');
+                colors.push(color.r, color.g, color.b);
+            }
+            
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            
+            const material = new THREE.PointsMaterial({
+                size: 0.05,
+                vertexColors: true,
+                sizeAttenuation: true
+            });
+            
+            pointCloud = new THREE.Points(geometry, material);
+            scene.add(pointCloud);
+            
+            document.getElementById('point-count').textContent = positions.length / 3;
+            
+            // Hide loading screen
+            setTimeout(() => {
+                document.getElementById('loading').classList.add('hidden');
+            }, 500);
+            
+            // Center camera on point cloud
+            const box = new THREE.Box3().setFromObject(pointCloud);
+            const center = box.getCenter(new THREE.Vector3());
+            controls.target.copy(center);
+            
+            const size = box.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const fov = camera.fov * (Math.PI / 180);
+            let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+            cameraZ *= 1.5;
+            
+            camera.position.set(center.x + cameraZ, center.y + cameraZ/2, center.z + cameraZ);
+            camera.lookAt(center);
+        }
+        
+        function getColorForValue(value, paletteName) {
+            const palette = palettes[paletteName];
+            const index = Math.min(Math.floor(value * (palette.length - 1)), palette.length - 1);
+            const colorHex = palette[index];
+            const color = new THREE.Color(colorHex);
+            return color;
+        }
+        
+        function updateProgress(percent) {
+            document.getElementById('progress-fill').style.width = percent + '%';
+        }
+        
+        function updatePointSize(e) {
+            const size = parseFloat(e.target.value);
+            document.getElementById('size-value').textContent = size.toFixed(2);
+            if (pointCloud) {
+                pointCloud.material.size = size;
+            }
+        }
+        
+        function updateDensity(e) {
+            const density = parseInt(e.target.value);
+            document.getElementById('density-value').textContent = density + '%';
+            // In real implementation, adjust point sampling
+        }
+        
+        function updateHeightScale(e) {
+            const scale = parseFloat(e.target.value);
+            document.getElementById('height-value').textContent = scale.toFixed(1) + 'x';
+            if (pointCloud) {
+                pointCloud.scale.y = scale;
+            }
+        }
+        
+        function updateColorMode(e) {
+            currentColorMode = e.target.value;
+            // Recolor points based on mode
+            // In real implementation, would recalculate colors
+        }
+        
+        function updateColorPalette(e) {
+            currentPalette = e.target.value;
+            // Recolor points with new palette
+        }
+        
+        function resetCamera() {
+            if (pointCloud) {
+                const box = new THREE.Box3().setFromObject(pointCloud);
+                const center = box.getCenter(new THREE.Vector3());
+                controls.target.copy(center);
+                
+                const size = box.getSize(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const fov = camera.fov * (Math.PI / 180);
+                let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+                cameraZ *= 1.5;
+                
+                camera.position.set(center.x + cameraZ, center.y + cameraZ/2, center.z + cameraZ);
+                camera.lookAt(center);
+            }
+        }
+        
+        function toggleControls() {
+            const controls = document.getElementById('controls');
+            const btn = controls.querySelector('.toggle-btn');
+            controls.classList.toggle('collapsed');
+            btn.textContent = controls.classList.contains('collapsed') ? 'Show' : 'Hide';
+        }
+        
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        
+        // Initialize on load
+        init();
+        loadLAZFile();
+    </script>
+</body>
+</html>

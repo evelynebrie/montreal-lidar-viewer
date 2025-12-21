@@ -1,0 +1,24 @@
+{
+  "filename": "23_2995040F08_DC.laz",
+  "point_count": 4756434,
+  "bounds": {
+    "min": [
+      299000.0,
+      5040000.0,
+      -62.57
+    ],
+    "max": [
+      299999.99,
+      5040999.99,
+      286.47
+    ]
+  },
+  "center": [
+    299495.0325135724,
+    5040511.82210824,
+    55.613076931163235
+  ],
+  "has_colors": true,
+  "has_classification": true,
+  "has_intensity": true
+}

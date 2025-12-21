@@ -1,0 +1,2 @@
+web_data/points.bin filter=lfs diff=lfs merge=lfs -text
+web_data/*.bin filter=lfs diff=lfs merge=lfs -text

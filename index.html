@@ -475,21 +475,44 @@
                 updateProgress(30);
                 updateLoadingText('Loading point cloud...');
                 
-                // Try to load the sample first (faster for testing)
-                const dataResponse = await fetch('web_data/points_sample.json.gz');
-                const data = await dataResponse.json();
+                // Load binary format
+                const dataResponse = await fetch('web_data/points.bin');
+                const arrayBuffer = await dataResponse.arrayBuffer();
                 
                 updateProgress(60);
                 updateLoadingText('Processing points...');
                 
-                // Extract positions and colors
-                const positions = new Float32Array(data.positions);
-                const numPoints = positions.length / 3;
+                // Parse binary format
+                const dataView = new DataView(arrayBuffer);
+                let offset = 0;
                 
-                // Get colors if available
+                // Read header
+                const numPoints = dataView.getUint32(offset, true);
+                offset += 4;
+                
+                const flags = dataView.getUint8(offset);
+                offset += 1;
+                
+                const hasColors = (flags & 1) !== 0;
+                const hasClassification = (flags & 2) !== 0;
+                const hasIntensity = (flags & 4) !== 0;
+                
+                // Read positions
+                const positions = new Float32Array(numPoints * 3);
+                for (let i = 0; i < numPoints * 3; i++) {
+                    positions[i] = dataView.getFloat32(offset, true);
+                    offset += 4;
+                }
+                
+                // Read colors if available
                 let colors;
-                if (data.colors && data.colors.length > 0) {
-                    colors = new Float32Array(data.colors);
+                if (hasColors) {
+                    colors = new Float32Array(numPoints * 3);
+                    for (let i = 0; i < numPoints; i++) {
+                        colors[i * 3] = dataView.getUint8(offset++) / 255.0;
+                        colors[i * 3 + 1] = dataView.getUint8(offset++) / 255.0;
+                        colors[i * 3 + 2] = dataView.getUint8(offset++) / 255.0;
+                    }
                 } else {
                     // Generate colors from elevation if no RGB data
                     colors = new Float32Array(numPoints * 3);

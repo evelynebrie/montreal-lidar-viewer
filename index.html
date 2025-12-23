@@ -638,9 +638,14 @@
                 const z_q = dataView.getUint16(offset, true); offset += 2;
                 
                 // Dequantize using GLOBAL bounds
-                positions[i * 3] = (x_q / 65535.0) * ranges[0] + mins[0];
-                positions[i * 3 + 1] = (y_q / 65535.0) * ranges[1] + mins[1];
-                positions[i * 3 + 2] = (z_q / 65535.0) * ranges[2] + mins[2];
+                const x = (x_q / 65535.0) * ranges[0] + mins[0];
+                const y = (y_q / 65535.0) * ranges[1] + mins[1];
+                const z = (z_q / 65535.0) * ranges[2] + mins[2];
+                
+                // SWAP Y and Z so that Z (elevation in LiDAR) becomes Y (up in Three.js)
+                positions[i * 3] = x;      // X stays X
+                positions[i * 3 + 1] = z;  // Z (elevation) becomes Y (up)
+                positions[i * 3 + 2] = y;  // Y becomes Z (depth)
             }
             
             // Read colors
@@ -655,11 +660,12 @@
             } else {
                 console.log(`Chunk ${chunkInfo.index}: Using elevation coloring`);
                 // Use elevation coloring from global bounds
-                const globalZMin = index.bounds.min[2];
+                // Z in the data is elevation, but we swapped it to Y in Three.js
+                const globalZMin = index.bounds.min[2];  // Original Z (elevation)
                 const globalZMax = index.bounds.max[2];
                 for (let i = 0; i < numPoints; i++) {
-                    const z = positions[i * 3 + 2];
-                    const t = (z - globalZMin) / (globalZMax - globalZMin);
+                    const elevation = positions[i * 3 + 1];  // Y is now elevation
+                    const t = (elevation - globalZMin) / (globalZMax - globalZMin);
                     const color = getColorForValue(Math.max(0, Math.min(1, t)), 'viridis');
                     colors[i * 3] = color.r;
                     colors[i * 3 + 1] = color.g;
@@ -891,16 +897,15 @@
             const fov = camera.fov * (Math.PI / 180);
             
             // Calculate distance to fit the entire point cloud in view
-            // Use a smaller multiplier to start closer
             let cameraDistance = Math.abs(maxDim / 2 / Math.tan(fov / 2));
-            cameraDistance *= 1.2; // Reduced from 1.5 to start closer
+            cameraDistance *= 2.5; // Increased to start further back and see everything
             
-            // Position camera ABOVE the data looking down at an angle
-            // This ensures buildings point UP (positive Y), streets are below
+            // Position camera ABOVE and BACK from the data
+            // Looking down at the city from a bird's eye view
             camera.position.set(
-                center.x + cameraDistance * 0.3,  // Slightly to the side
-                center.y + cameraDistance * 0.8,  // High above (Y is UP)
-                center.z + cameraDistance * 0.5   // Slightly back
+                center.x,                         // Centered on X
+                center.y + cameraDistance * 1.2,  // High above (Y is UP)
+                center.z + cameraDistance * 0.8   // Back from center
             );
             
             // Look at the center
@@ -911,6 +916,7 @@
             
             console.log(`Camera positioned at: [${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)}]`);
             console.log(`Looking at center: [${center.x.toFixed(1)}, ${center.y.toFixed(1)}, ${center.z.toFixed(1)}]`);
+            console.log(`Point cloud size: [${size.x.toFixed(1)}, ${size.y.toFixed(1)}, ${size.z.toFixed(1)}]`);
         }
         
         function getColorForValue(value, paletteName) {

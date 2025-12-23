@@ -602,20 +602,26 @@
             const hasColors = (flags & 1) !== 0;
             const isQuantized = (flags & 8) !== 0;
             
-            // Read quantization params (these are chunk-local mins/ranges)
-            const mins = [
+            // Read quantization params from file (but we'll use global ones from index)
+            const file_mins = [
                 dataView.getFloat32(offset, true),
                 dataView.getFloat32(offset + 4, true),
                 dataView.getFloat32(offset + 8, true)
             ];
             offset += 12;
             
-            const ranges = [
+            const file_ranges = [
                 dataView.getFloat32(offset, true),
                 dataView.getFloat32(offset + 4, true),
                 dataView.getFloat32(offset + 8, true)
             ];
             offset += 12;
+            
+            // USE GLOBAL quantization params for consistency across all chunks
+            const mins = index.quantization.mins;
+            const ranges = index.quantization.ranges;
+            
+            console.log(`Chunk ${chunkInfo.index}: Using global quant params`);
             
             // Read and dequantize positions
             const positions = new Float32Array(numPoints * 3);
@@ -624,8 +630,7 @@
                 const y_q = dataView.getUint16(offset, true); offset += 2;
                 const z_q = dataView.getUint16(offset, true); offset += 2;
                 
-                // Dequantize - these are already centered relative to global center
-                // So we just dequantize, no additional offset needed
+                // Dequantize using GLOBAL bounds
                 positions[i * 3] = (x_q / 65535.0) * ranges[0] + mins[0];
                 positions[i * 3 + 1] = (y_q / 65535.0) * ranges[1] + mins[1];
                 positions[i * 3 + 2] = (z_q / 65535.0) * ranges[2] + mins[2];
@@ -634,16 +639,14 @@
             // Read colors
             const colors = new Float32Array(numPoints * 3);
             if (hasColors) {
-                console.log(`Chunk has RGB colors - loading ${numPoints} colors`);
+                console.log(`Chunk ${chunkInfo.index}: Loading RGB colors`);
                 for (let i = 0; i < numPoints; i++) {
                     colors[i * 3] = dataView.getUint8(offset++) / 255.0;
                     colors[i * 3 + 1] = dataView.getUint8(offset++) / 255.0;
                     colors[i * 3 + 2] = dataView.getUint8(offset++) / 255.0;
                 }
-                // Log first color as sample
-                console.log(`Sample RGB: [${colors[0].toFixed(3)}, ${colors[1].toFixed(3)}, ${colors[2].toFixed(3)}]`);
             } else {
-                console.log('No RGB data - using elevation coloring');
+                console.log(`Chunk ${chunkInfo.index}: Using elevation coloring`);
                 // Use elevation coloring from global bounds
                 const globalZMin = index.bounds.min[2];
                 const globalZMax = index.bounds.max[2];

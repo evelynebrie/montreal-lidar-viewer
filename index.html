@@ -893,14 +893,14 @@
             
             // Calculate distance to fit the entire point cloud in view
             let cameraDistance = Math.abs(maxDim / 2 / Math.tan(fov / 2));
-            cameraDistance *= 2.5; // Increased to start further back and see everything
+            cameraDistance *= 3.5; // Much further back to see everything!
             
-            // Position camera ABOVE and BACK from the data
-            // Looking down at the city from a bird's eye view
+            // Position camera ABOVE and WAY BACK from the data
+            // Bird's eye view of the entire city
             camera.position.set(
                 center.x,                         // Centered on X
-                center.y + cameraDistance * 1.2,  // High above (Y is UP)
-                center.z + cameraDistance * 0.8   // Back from center
+                center.y + cameraDistance * 1.5,  // Very high above
+                center.z + cameraDistance * 1.2   // Way back
             );
             
             // Look at the center
@@ -1036,14 +1036,14 @@
             
             switch(event.key) {
                 case 'ArrowUp':
-                    // Move forward (up arrow should move you forward/up in view)
-                    camera.position.z += moveSpeed;
-                    controls.target.z += moveSpeed;
-                    break;
-                case 'ArrowDown':
-                    // Move backward (down arrow should move you back/down in view)
+                    // Move forward (toward the scene)
                     camera.position.z -= moveSpeed;
                     controls.target.z -= moveSpeed;
+                    break;
+                case 'ArrowDown':
+                    // Move backward (away from scene)
+                    camera.position.z += moveSpeed;
+                    controls.target.z += moveSpeed;
                     break;
                 case 'ArrowLeft':
                     // Move left

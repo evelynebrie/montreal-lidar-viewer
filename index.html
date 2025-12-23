@@ -638,14 +638,10 @@
                 const z_q = dataView.getUint16(offset, true); offset += 2;
                 
                 // Dequantize using GLOBAL bounds
-                const x = (x_q / 65535.0) * ranges[0] + mins[0];
-                const y = (y_q / 65535.0) * ranges[1] + mins[1];
-                const z = (z_q / 65535.0) * ranges[2] + mins[2];
-                
-                // SWAP Y and Z so that Z (elevation in LiDAR) becomes Y (up in Three.js)
-                positions[i * 3] = x;      // X stays X
-                positions[i * 3 + 1] = z;  // Z (elevation) becomes Y (up)
-                positions[i * 3 + 2] = y;  // Y becomes Z (depth)
+                // Data is already in correct format (Y=up) from converter
+                positions[i * 3] = (x_q / 65535.0) * ranges[0] + mins[0];
+                positions[i * 3 + 1] = (y_q / 65535.0) * ranges[1] + mins[1];
+                positions[i * 3 + 2] = (z_q / 65535.0) * ranges[2] + mins[2];
             }
             
             // Read colors
@@ -659,13 +655,12 @@
                 }
             } else {
                 console.log(`Chunk ${chunkInfo.index}: Using elevation coloring`);
-                // Use elevation coloring from global bounds
-                // Z in the data is elevation, but we swapped it to Y in Three.js
-                const globalZMin = index.bounds.min[2];  // Original Z (elevation)
-                const globalZMax = index.bounds.max[2];
+                // Y is now elevation (was Z in original LiDAR, swapped in converter)
+                const globalElevMin = index.bounds.min[2];  // Original Z min
+                const globalElevMax = index.bounds.max[2];  // Original Z max
                 for (let i = 0; i < numPoints; i++) {
-                    const elevation = positions[i * 3 + 1];  // Y is now elevation
-                    const t = (elevation - globalZMin) / (globalZMax - globalZMin);
+                    const elevation = positions[i * 3 + 1];  // Y is elevation
+                    const t = (elevation - globalElevMin) / (globalElevMax - globalElevMin);
                     const color = getColorForValue(Math.max(0, Math.min(1, t)), 'viridis');
                     colors[i * 3] = color.r;
                     colors[i * 3 + 1] = color.g;
@@ -1041,14 +1036,14 @@
             
             switch(event.key) {
                 case 'ArrowUp':
-                    // Move forward (away from camera toward target)
-                    camera.position.z -= moveSpeed;
-                    controls.target.z -= moveSpeed;
-                    break;
-                case 'ArrowDown':
-                    // Move backward
+                    // Move forward (up arrow should move you forward/up in view)
                     camera.position.z += moveSpeed;
                     controls.target.z += moveSpeed;
+                    break;
+                case 'ArrowDown':
+                    // Move backward (down arrow should move you back/down in view)
+                    camera.position.z -= moveSpeed;
+                    controls.target.z -= moveSpeed;
                     break;
                 case 'ArrowLeft':
                     // Move left
@@ -1062,13 +1057,13 @@
                     break;
                 case 'w':
                 case 'W':
-                    // Move up
+                    // Move up (altitude)
                     camera.position.y += moveSpeed;
                     controls.target.y += moveSpeed;
                     break;
                 case 's':
                 case 'S':
-                    // Move down
+                    // Move down (altitude)
                     camera.position.y -= moveSpeed;
                     controls.target.y -= moveSpeed;
                     break;

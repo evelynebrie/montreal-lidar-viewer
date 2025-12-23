@@ -385,10 +385,13 @@
         <p>Area: <span class="stat">1km × 1km tile</span></p>
         <p>Location: <span class="stat">Montreal, QC</span></p>
         <p style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
-            <strong>Controls:</strong><br>
+            <strong>Mouse Controls:</strong><br>
             Left Click + Drag: Rotate<br>
             Right Click + Drag: Pan<br>
-            Scroll: Zoom
+            Scroll: Zoom<br>
+            <strong style="margin-top: 8px; display: block;">Keyboard:</strong>
+            Arrow Keys: Move camera<br>
+            W/S: Move up/down
         </p>
     </div>
     
@@ -429,7 +432,8 @@
                 0.1,
                 10000
             );
-            camera.position.set(100, 100, 200);
+            // Start closer to see the data immediately
+            camera.position.set(200, 150, 300);
             
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -454,6 +458,9 @@
             scene.add(gridHelper);
             
             window.addEventListener('resize', onWindowResize);
+            
+            // Add keyboard controls
+            window.addEventListener('keydown', onKeyDown);
             
             document.getElementById('point-size').addEventListener('input', updatePointSize);
             document.getElementById('height-scale').addEventListener('input', updateHeightScale);
@@ -871,7 +878,7 @@
             pointCloud = new THREE.Points(geometry, material);
             scene.add(pointCloud);
             
-            // Center camera
+            // Center camera on the point cloud
             geometry.computeBoundingBox();
             const box = geometry.boundingBox;
             const center = new THREE.Vector3();
@@ -882,11 +889,28 @@
             box.getSize(size);
             const maxDim = Math.max(size.x, size.y, size.z);
             const fov = camera.fov * (Math.PI / 180);
-            let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
-            cameraZ *= 1.5;
             
-            camera.position.set(center.x + cameraZ, center.y + cameraZ/2, center.z + cameraZ);
+            // Calculate distance to fit the entire point cloud in view
+            // Use a smaller multiplier to start closer
+            let cameraDistance = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+            cameraDistance *= 1.2; // Reduced from 1.5 to start closer
+            
+            // Position camera ABOVE the data looking down at an angle
+            // This ensures buildings point UP (positive Y), streets are below
+            camera.position.set(
+                center.x + cameraDistance * 0.3,  // Slightly to the side
+                center.y + cameraDistance * 0.8,  // High above (Y is UP)
+                center.z + cameraDistance * 0.5   // Slightly back
+            );
+            
+            // Look at the center
             camera.lookAt(center);
+            
+            // Set the "up" direction to positive Y
+            camera.up.set(0, 1, 0);
+            
+            console.log(`Camera positioned at: [${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)}]`);
+            console.log(`Looking at center: [${center.x.toFixed(1)}, ${center.y.toFixed(1)}, ${center.z.toFixed(1)}]`);
         }
         
         function getColorForValue(value, paletteName) {
@@ -960,6 +984,9 @@
             const scale = parseFloat(e.target.value);
             document.getElementById('height-value').textContent = scale.toFixed(1) + 'x';
             if (pointCloud) {
+                // Reset scale first
+                pointCloud.scale.set(1, 1, 1);
+                // Apply height exaggeration to Y axis (vertical/up)
                 pointCloud.scale.y = scale;
             }
         }
@@ -1000,6 +1027,46 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        function onKeyDown(event) {
+            const moveSpeed = 10; // Adjust speed as needed
+            const target = controls.target.clone();
+            
+            switch(event.key) {
+                case 'ArrowUp':
+                    // Move forward (away from camera toward target)
+                    camera.position.z -= moveSpeed;
+                    controls.target.z -= moveSpeed;
+                    break;
+                case 'ArrowDown':
+                    // Move backward
+                    camera.position.z += moveSpeed;
+                    controls.target.z += moveSpeed;
+                    break;
+                case 'ArrowLeft':
+                    // Move left
+                    camera.position.x -= moveSpeed;
+                    controls.target.x -= moveSpeed;
+                    break;
+                case 'ArrowRight':
+                    // Move right
+                    camera.position.x += moveSpeed;
+                    controls.target.x += moveSpeed;
+                    break;
+                case 'w':
+                case 'W':
+                    // Move up
+                    camera.position.y += moveSpeed;
+                    controls.target.y += moveSpeed;
+                    break;
+                case 's':
+                case 'S':
+                    // Move down
+                    camera.position.y -= moveSpeed;
+                    controls.target.y -= moveSpeed;
+                    break;
+            }
         }
         
         function animate() {

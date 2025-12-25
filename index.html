@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Montreal LiDAR 3D Viewer</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=JetBrains+Mono:wght@300;400&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
         
         * {
             margin: 0;
@@ -14,35 +14,20 @@
         }
         
         :root {
-            --bg-dark: #0a0e14;
-            --bg-panel: rgba(15, 20, 28, 0.85);
-            --accent-cyan: #00d9ff;
-            --accent-pink: #ff00aa;
-            --text-primary: #e6e8eb;
-            --text-secondary: #8b95a8;
-            --border: rgba(255, 255, 255, 0.1);
+            --bg-light: #f8f9fa;
+            --bg-panel: rgba(255, 255, 255, 0.95);
+            --accent: #2563eb;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --border: #e2e8f0;
+            --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
         
         body {
-            font-family: 'JetBrains Mono', monospace;
-            background: var(--bg-dark);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-light);
             color: var(--text-primary);
             overflow: hidden;
-            position: relative;
-        }
-        
-        body::before {
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: 
-                radial-gradient(circle at 20% 50%, rgba(0, 217, 255, 0.1) 0%, transparent 50%),
-                radial-gradient(circle at 80% 80%, rgba(255, 0, 170, 0.08) 0%, transparent 50%);
-            pointer-events: none;
-            z-index: -1;
         }
         
         #canvas-container {
@@ -55,21 +40,22 @@
         
         #controls {
             position: fixed;
-            top: 20px;
-            right: 20px;
+            top: 24px;
+            right: 24px;
             background: var(--bg-panel);
             border: 1px solid var(--border);
-            border-radius: 12px;
+            border-radius: 8px;
             padding: 20px;
-            min-width: 280px;
-            backdrop-filter: blur(10px);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            min-width: 260px;
+            max-width: 300px;
+            backdrop-filter: blur(12px);
+            box-shadow: var(--shadow);
             z-index: 100;
-            transition: transform 0.3s ease;
+            transition: transform 0.2s ease;
         }
         
         #controls.collapsed {
-            transform: translateX(320px);
+            transform: translateX(340px);
         }
         
         .control-header {
@@ -77,20 +63,16 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 20px;
-            padding-bottom: 12px;
+            padding-bottom: 16px;
             border-bottom: 1px solid var(--border);
         }
         
         .control-header h2 {
-            font-family: 'Space Mono', monospace;
-            font-size: 14px;
-            font-weight: 700;
-            letter-spacing: 2px;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
             text-transform: uppercase;
-            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-pink));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: var(--text-primary);
         }
         
         .toggle-btn {
@@ -98,131 +80,138 @@
             border: 1px solid var(--border);
             color: var(--text-secondary);
             cursor: pointer;
-            padding: 4px 8px;
+            padding: 4px 10px;
             border-radius: 4px;
-            font-size: 12px;
+            font-size: 11px;
+            font-weight: 500;
             transition: all 0.2s;
+            font-family: inherit;
         }
         
         .toggle-btn:hover {
-            border-color: var(--accent-cyan);
-            color: var(--accent-cyan);
+            border-color: var(--accent);
+            color: var(--accent);
+            background: rgba(37, 99, 235, 0.05);
         }
         
         .control-group {
-            margin-bottom: 16px;
+            margin-bottom: 18px;
         }
         
         .control-group label {
             display: block;
             font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
+            font-weight: 500;
             color: var(--text-secondary);
             margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         
         input[type="range"] {
             width: 100%;
-            height: 4px;
+            height: 2px;
             background: var(--border);
             border-radius: 2px;
             outline: none;
             -webkit-appearance: none;
+            cursor: pointer;
         }
         
         input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
-            width: 14px;
-            height: 14px;
-            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-pink));
+            width: 16px;
+            height: 16px;
+            background: var(--accent);
             border-radius: 50%;
             cursor: pointer;
-            box-shadow: 0 2px 8px rgba(0, 217, 255, 0.4);
+            border: 2px solid white;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
         }
         
         input[type="range"]::-moz-range-thumb {
-            width: 14px;
-            height: 14px;
-            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-pink));
+            width: 16px;
+            height: 16px;
+            background: var(--accent);
             border-radius: 50%;
             cursor: pointer;
-            border: none;
+            border: 2px solid white;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
         }
         
         .value-display {
             display: inline-block;
             float: right;
             font-size: 11px;
-            color: var(--accent-cyan);
-            font-weight: 400;
+            color: var(--accent);
+            font-weight: 500;
         }
         
         select, button {
             width: 100%;
-            padding: 10px;
-            background: rgba(255, 255, 255, 0.05);
+            padding: 10px 12px;
+            background: white;
             border: 1px solid var(--border);
             border-radius: 6px;
             color: var(--text-primary);
             font-family: inherit;
-            font-size: 12px;
+            font-size: 13px;
             cursor: pointer;
             transition: all 0.2s;
+            font-weight: 400;
         }
         
-        select:hover, button:hover {
-            border-color: var(--accent-cyan);
-            background: rgba(0, 217, 255, 0.1);
+        select:hover, select:focus {
+            border-color: var(--accent);
+            outline: none;
         }
         
         button {
-            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-pink));
+            background: var(--accent);
             border: none;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 1px;
+            color: white;
+            font-weight: 500;
             margin-top: 8px;
         }
         
         button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 16px rgba(0, 217, 255, 0.4);
+            background: #1d4ed8;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
         }
         
         #info {
             position: fixed;
-            bottom: 20px;
-            left: 20px;
+            bottom: 24px;
+            left: 24px;
             background: var(--bg-panel);
             border: 1px solid var(--border);
-            border-radius: 12px;
+            border-radius: 8px;
             padding: 16px 20px;
-            backdrop-filter: blur(10px);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-            max-width: 400px;
+            backdrop-filter: blur(12px);
+            box-shadow: var(--shadow);
+            max-width: 350px;
         }
         
         #info h3 {
-            font-family: 'Space Mono', monospace;
-            font-size: 12px;
-            font-weight: 700;
-            letter-spacing: 1.5px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
             text-transform: uppercase;
-            margin-bottom: 8px;
-            color: var(--accent-cyan);
+            margin-bottom: 10px;
+            color: var(--text-primary);
         }
         
         #info p {
-            font-size: 11px;
+            font-size: 12px;
             line-height: 1.6;
             color: var(--text-secondary);
-            margin: 4px 0;
+            margin: 6px 0;
         }
         
         .stat {
-            font-family: 'Space Mono', monospace;
-            color: var(--text-primary);
+            color: var(--accent);
+            font-weight: 500;
         }
         
         #loading {
@@ -231,7 +220,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: var(--bg-dark);
+            background: var(--bg-light);
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -246,12 +235,12 @@
         }
         
         .spinner {
-            width: 50px;
-            height: 50px;
+            width: 40px;
+            height: 40px;
             border: 3px solid var(--border);
-            border-top-color: var(--accent-cyan);
+            border-top-color: var(--accent);
             border-radius: 50%;
-            animation: spin 1s linear infinite;
+            animation: spin 0.8s linear infinite;
         }
         
         @keyframes spin {
@@ -260,17 +249,16 @@
         
         #loading-text {
             margin-top: 20px;
-            font-size: 14px;
+            font-size: 13px;
             color: var(--text-secondary);
-            letter-spacing: 2px;
-            text-transform: uppercase;
+            font-weight: 500;
         }
         
         #progress-bar {
             width: 300px;
-            height: 4px;
+            height: 3px;
             background: var(--border);
-            border-radius: 2px;
+            border-radius: 3px;
             margin-top: 16px;
             overflow: hidden;
         }
@@ -278,36 +266,30 @@
         #progress-fill {
             height: 100%;
             width: 0%;
-            background: linear-gradient(90deg, var(--accent-cyan), var(--accent-pink));
+            background: var(--accent);
             transition: width 0.3s ease;
         }
         
         #header {
             position: fixed;
-            top: 20px;
-            left: 20px;
+            top: 24px;
+            left: 24px;
             z-index: 50;
         }
         
         #header h1 {
-            font-family: 'Space Mono', monospace;
-            font-size: 24px;
-            font-weight: 700;
-            letter-spacing: 3px;
-            text-transform: uppercase;
-            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-pink));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            font-size: 20px;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+            color: var(--text-primary);
             margin: 0;
-            text-shadow: 0 0 30px rgba(0, 217, 255, 0.3);
         }
         
         #header p {
-            font-size: 11px;
+            font-size: 12px;
             color: var(--text-secondary);
             margin-top: 4px;
-            letter-spacing: 1px;
+            font-weight: 400;
         }
         
         @media (max-width: 768px) {
@@ -332,8 +314,8 @@
     </div>
     
     <div id="header">
-        <h1>MTL LiDAR</h1>
-        <p>Interactive 3D Point Cloud</p>
+        <h1>Montreal LiDAR</h1>
+        <p>3D Point Cloud Viewer</p>
     </div>
     
     <div id="canvas-container"></div>
@@ -422,8 +404,8 @@
         
         function init() {
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x0a0e14);
-            scene.fog = new THREE.Fog(0x0a0e14, 200, 800);
+            scene.background = new THREE.Color(0xf0f2f5);  // Light gray background
+            scene.fog = new THREE.Fog(0xf0f2f5, 500, 2000);  // Subtle fog
             
             const container = document.getElementById('canvas-container');
             camera = new THREE.PerspectiveCamera(
@@ -445,15 +427,21 @@
             controls.dampingFactor = 0.05;
             controls.screenSpacePanning = false;
             
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            // Bright, even lighting for maximum visibility
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
             scene.add(ambientLight);
             
             const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            directionalLight.position.set(50, 100, 50);
+            directionalLight.position.set(100, 200, 100);
             scene.add(directionalLight);
             
-            const gridHelper = new THREE.GridHelper(1000, 50, 0x00d9ff, 0x8b95a8);
-            gridHelper.material.opacity = 0.1;
+            // Add second light from opposite side
+            const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.5);
+            directionalLight2.position.set(-100, 100, -100);
+            scene.add(directionalLight2);
+            
+            const gridHelper = new THREE.GridHelper(1000, 50, 0xcccccc, 0xe5e5e5);
+            gridHelper.material.opacity = 0.3;
             gridHelper.material.transparent = true;
             scene.add(gridHelper);
             
@@ -891,16 +879,15 @@
             const maxDim = Math.max(size.x, size.y, size.z);
             const fov = camera.fov * (Math.PI / 180);
             
-            // Calculate distance to fit the entire point cloud in view
+            // Calculate distance - CLOSER for better initial view
             let cameraDistance = Math.abs(maxDim / 2 / Math.tan(fov / 2));
-            cameraDistance *= 3.5; // Much further back to see everything!
+            cameraDistance *= 1.8; // Closer view - see more detail immediately
             
-            // Position camera ABOVE and WAY BACK from the data
-            // Bird's eye view of the entire city
+            // Position camera at nice viewing angle
             camera.position.set(
-                center.x,                         // Centered on X
-                center.y + cameraDistance * 1.5,  // Very high above
-                center.z + cameraDistance * 1.2   // Way back
+                center.x + cameraDistance * 0.5,  // Slightly to the side
+                center.y + cameraDistance * 1.2,  // Above
+                center.z + cameraDistance * 0.8   // Back
             );
             
             // Look at the center

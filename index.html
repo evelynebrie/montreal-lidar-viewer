@@ -345,26 +345,22 @@
             </select>
         </div>
         
-        <div class="control-group">
-            <label>Classification Filter</label>
-            <select id="class-filter">
-                <option value="all">All Points</option>
-                <option value="1">Unclassified</option>
-                <option value="2">Ground</option>
-                <option value="6">Buildings Only</option>
-                <option value="7">Noise</option>
-            </select>
-        </div>
-        
-        <div class="control-group">
-            <label>Classification Filter</label>
-            <select id="class-filter">
-                <option value="all">All Points</option>
-                <option value="1">Unclassified</option>
-                <option value="2">Ground</option>
-                <option value="6">Buildings Only</option>
-                <option value="7">Noise</option>
-            </select>
+        <div class="control-group" id="class-filter-group" style="display: none;">
+            <label>Show Classes</label>
+            <div style="max-height: 200px; overflow-y: auto; padding: 8px; background: white; border: 1px solid var(--border); border-radius: 6px;">
+                <label style="display: flex; align-items: center; margin: 6px 0; cursor: pointer; text-transform: none; font-size: 12px;">
+                    <input type="checkbox" class="class-checkbox" value="1" checked style="margin-right: 8px;">
+                    <span style="color: #b3b3b3;">◼</span>&nbsp;Unclassified
+                </label>
+                <label style="display: flex; align-items: center; margin: 6px 0; cursor: pointer; text-transform: none; font-size: 12px;">
+                    <input type="checkbox" class="class-checkbox" value="2" checked style="margin-right: 8px;">
+                    <span style="color: #996633;">◼</span>&nbsp;Ground
+                </label>
+                <label style="display: flex; align-items: center; margin: 6px 0; cursor: pointer; text-transform: none; font-size: 12px;">
+                    <input type="checkbox" class="class-checkbox" value="6" checked style="margin-right: 8px;">
+                    <span style="color: #e64d4d;">◼</span>&nbsp;Buildings
+                </label>
+            </div>
         </div>
         
         <div class="control-group">
@@ -497,7 +493,11 @@
             document.getElementById('height-scale').addEventListener('input', updateHeightScale);
             document.getElementById('color-mode').addEventListener('change', updateColorMode);
             document.getElementById('color-palette').addEventListener('change', updateColorPalette);
-            document.getElementById('class-filter').addEventListener('change', updateClassFilter);
+            
+            // Add event listeners to all classification checkboxes
+            document.querySelectorAll('.class-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', updateClassFilter);
+            });
             document.getElementById('class-filter').addEventListener('change', updateClassFilter);
             
             animate();
@@ -989,6 +989,14 @@
         function updateColorMode(e) {
             currentColorMode = e.target.value;
             
+            // Show/hide classification filter
+            const filterGroup = document.getElementById('class-filter-group');
+            if (currentColorMode === 'classification' || currentColorMode === 'rgb') {
+                filterGroup.style.display = 'block';
+            } else {
+                filterGroup.style.display = 'none';
+            }
+            
             if (!pointCloud || !pointsData.positions) return;
             
             const numPoints = pointsData.positions.length / 3;
@@ -1018,6 +1026,7 @@
                     alert('No classification data available');
                     document.getElementById('color-mode').value = 'rgb';
                     colors.set(pointsData.originalColors);
+                    filterGroup.style.display = 'none';
                 } else {
                     // Color by classification
                     for (let i = 0; i < numPoints; i++) {
@@ -1033,6 +1042,9 @@
             
             pointCloud.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
             pointsData.colors = colors;
+            
+            // Apply filter immediately
+            updateClassFilter();
         }
         
         function updateColorPalette(e) {
@@ -1042,56 +1054,54 @@
             }
         }
         
-        function updateClassFilter(e) {
-            currentClassFilter = e.target.value;
-            
-            if (!pointCloud || !pointsData.positions || !pointsData.classification) {
-                if (currentClassFilter !== 'all') {
-                    alert('No classification data available in this dataset');
-                    e.target.value = 'all';
-                }
+        function updateClassFilter() {
+            if (!pointCloud || !pointsData.positions || !pointsData.classification || pointsData.classification.length === 0) {
                 return;
             }
             
-            const numPoints = pointsData.positions.length / 3;
+            // Get selected classes from checkboxes
+            const selectedClasses = new Set();
+            document.querySelectorAll('.class-checkbox:checked').forEach(checkbox => {
+                selectedClasses.add(parseInt(checkbox.value));
+            });
             
-            if (currentClassFilter === 'all') {
-                // Show all points
-                pointCloud.geometry.setAttribute('position', new THREE.BufferAttribute(pointsData.positions, 3));
-                pointCloud.geometry.setAttribute('color', new THREE.BufferAttribute(pointsData.colors, 3));
-            } else {
-                // Filter by classification
-                const classId = parseInt(currentClassFilter);
-                const filteredPositions = [];
-                const filteredColors = [];
+            // Always exclude noise (Class 7) - never show it
+            const numPoints = pointsData.positions.length / 3;
+            const filteredPositions = [];
+            const filteredColors = [];
+            
+            for (let i = 0; i < numPoints; i++) {
+                const classId = pointsData.classification[i];
                 
-                for (let i = 0; i < numPoints; i++) {
-                    if (pointsData.classification[i] === classId) {
-                        filteredPositions.push(
-                            pointsData.positions[i * 3],
-                            pointsData.positions[i * 3 + 1],
-                            pointsData.positions[i * 3 + 2]
-                        );
-                        filteredColors.push(
-                            pointsData.colors[i * 3],
-                            pointsData.colors[i * 3 + 1],
-                            pointsData.colors[i * 3 + 2]
-                        );
-                    }
+                // Skip noise points (Class 7)
+                if (classId === 7) continue;
+                
+                // Include if in selected classes OR if showing all (no checkboxes checked means show all non-noise)
+                if (selectedClasses.size === 0 || selectedClasses.has(classId)) {
+                    filteredPositions.push(
+                        pointsData.positions[i * 3],
+                        pointsData.positions[i * 3 + 1],
+                        pointsData.positions[i * 3 + 2]
+                    );
+                    filteredColors.push(
+                        pointsData.colors[i * 3],
+                        pointsData.colors[i * 3 + 1],
+                        pointsData.colors[i * 3 + 2]
+                    );
                 }
-                
-                const positions = new Float32Array(filteredPositions);
-                const colors = new Float32Array(filteredColors);
-                
-                pointCloud.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-                pointCloud.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-                
-                console.log(`Filtered to class ${classId}: ${positions.length / 3} points`);
             }
+            
+            const positions = new Float32Array(filteredPositions);
+            const colors = new Float32Array(filteredColors);
+            
+            pointCloud.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            pointCloud.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
             
             pointCloud.geometry.attributes.position.needsUpdate = true;
             pointCloud.geometry.attributes.color.needsUpdate = true;
             pointCloud.geometry.computeBoundingSphere();
+            
+            console.log(`Filtered: ${positions.length / 3} points (noise excluded, selected classes: ${Array.from(selectedClasses).join(', ') || 'all'})`);
         }
         
         function updateProgress(percent) {

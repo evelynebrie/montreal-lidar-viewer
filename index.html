@@ -51,11 +51,16 @@
             backdrop-filter: blur(12px);
             box-shadow: var(--shadow);
             z-index: 100;
-            transition: transform 0.2s ease;
+            transition: all 0.2s ease;
         }
         
-        #controls.collapsed {
-            transform: translateX(340px);
+        #controls.minimized .control-content {
+            display: none;
+        }
+        
+        #controls.minimized {
+            min-width: auto;
+            padding: 12px 16px;
         }
         
         .control-header {
@@ -323,9 +328,10 @@
     <div id="controls">
         <div class="control-header">
             <h2>Controls</h2>
-            <button class="toggle-btn" onclick="toggleControls()">Hide</button>
+            <button class="toggle-btn" onclick="toggleControls()">Minimize</button>
         </div>
         
+        <div class="control-content">
         <div class="control-group">
             <label>Point Size <span class="value-display" id="size-value">1.5</span></label>
             <input type="range" id="point-size" min="0.1" max="3" step="0.1" value="1.5">
@@ -345,7 +351,7 @@
             </select>
         </div>
         
-        <div class="control-group" id="class-filter-group" style="display: none;">
+        <div class="control-group" id="class-filter-group">
             <label>Show Classes</label>
             <div style="max-height: 200px; overflow-y: auto; padding: 8px; background: white; border: 1px solid var(--border); border-radius: 6px;">
                 <label style="display: flex; align-items: center; margin: 6px 0; cursor: pointer; text-transform: none; font-size: 12px;">
@@ -376,6 +382,7 @@
         
         <button onclick="resetCamera()">Reset View</button>
         <button onclick="toggleFullscreen()">Fullscreen</button>
+        </div>
     </div>
     
     <div id="info">
@@ -988,14 +995,6 @@
         function updateColorMode(e) {
             currentColorMode = e.target.value;
             
-            // Show/hide classification filter
-            const filterGroup = document.getElementById('class-filter-group');
-            if (currentColorMode === 'classification' || currentColorMode === 'rgb') {
-                filterGroup.style.display = 'block';
-            } else {
-                filterGroup.style.display = 'none';
-            }
-            
             if (!pointCloud || !pointsData.positions) return;
             
             const numPoints = pointsData.positions.length / 3;
@@ -1025,7 +1024,6 @@
                     alert('No classification data available');
                     document.getElementById('color-mode').value = 'rgb';
                     colors.set(pointsData.originalColors);
-                    filterGroup.style.display = 'none';
                 } else {
                     // Color by classification
                     for (let i = 0; i < numPoints; i++) {
@@ -1150,8 +1148,8 @@
         function toggleControls() {
             const controls = document.getElementById('controls');
             const btn = controls.querySelector('.toggle-btn');
-            controls.classList.toggle('collapsed');
-            btn.textContent = controls.classList.contains('collapsed') ? 'Show' : 'Hide';
+            controls.classList.toggle('minimized');
+            btn.textContent = controls.classList.contains('minimized') ? 'Expand' : 'Minimize';
         }
         
         function toggleFullscreen() {

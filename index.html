@@ -14,7 +14,7 @@
         }
         
         :root {
-            --bg-light: #f8f9fa;
+            --bg-light: #ffffff;
             --bg-panel: rgba(255, 255, 255, 0.95);
             --accent: #2563eb;
             --text-primary: #1e293b;
@@ -341,6 +341,29 @@
             <select id="color-mode">
                 <option value="rgb">True Color (RGB)</option>
                 <option value="elevation">Elevation</option>
+                <option value="classification">Classification</option>
+            </select>
+        </div>
+        
+        <div class="control-group">
+            <label>Classification Filter</label>
+            <select id="class-filter">
+                <option value="all">All Points</option>
+                <option value="1">Unclassified</option>
+                <option value="2">Ground</option>
+                <option value="6">Buildings Only</option>
+                <option value="7">Noise</option>
+            </select>
+        </div>
+        
+        <div class="control-group">
+            <label>Classification Filter</label>
+            <select id="class-filter">
+                <option value="all">All Points</option>
+                <option value="1">Unclassified</option>
+                <option value="2">Ground</option>
+                <option value="6">Buildings Only</option>
+                <option value="7">Noise</option>
             </select>
         </div>
         
@@ -386,13 +409,33 @@
         let metadata = null;
         let currentColorMode = 'rgb';
         let currentPalette = 'viridis';
+        let currentClassFilter = 'all';
         let pointsData = {
             positions: [],
             colors: [],
-            originalColors: []
+            originalColors: [],
+            classification: []
         };
         
         const CHUNK_SIZE = 100000; // Load 100k points at a time
+        
+        // Classification colors (ASPRS standard)
+        const classificationColors = {
+            0: { r: 0.5, g: 0.5, b: 0.5, name: 'Never Classified' },      // Gray
+            1: { r: 0.7, g: 0.7, b: 0.7, name: 'Unclassified' },          // Light gray
+            2: { r: 0.6, g: 0.4, b: 0.2, name: 'Ground' },                 // Brown
+            3: { r: 0.4, g: 0.8, b: 0.4, name: 'Low Vegetation' },        // Light green
+            4: { r: 0.2, g: 0.7, b: 0.2, name: 'Medium Vegetation' },     // Green
+            5: { r: 0.1, g: 0.5, b: 0.1, name: 'High Vegetation' },       // Dark green
+            6: { r: 0.9, g: 0.3, b: 0.3, name: 'Building' },              // Red
+            7: { r: 0.9, g: 0.9, b: 0.1, name: 'Low Point (Noise)' },     // Yellow
+            8: { r: 0.5, g: 0.5, b: 0.5, name: 'Reserved' },              // Gray
+            9: { r: 0.2, g: 0.4, b: 0.9, name: 'Water' },                 // Blue
+            10: { r: 0.3, g: 0.3, b: 0.3, name: 'Rail' },                 // Dark gray
+            11: { r: 0.4, g: 0.4, b: 0.4, name: 'Road Surface' },         // Medium gray
+            17: { r: 0.8, g: 0.6, b: 0.4, name: 'Bridge Deck' },          // Tan
+            18: { r: 1.0, g: 0.5, b: 0.0, name: 'High Noise' }            // Orange
+        };
         
         const palettes = {
             viridis: ['#440154', '#414487', '#2a788e', '#22a884', '#7ad151', '#fde725'],
@@ -404,8 +447,8 @@
         
         function init() {
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0xf0f2f5);  // Light gray background
-            scene.fog = new THREE.Fog(0xf0f2f5, 500, 2000);  // Subtle fog
+            scene.background = new THREE.Color(0xffffff);  // Pure white background
+            // NO FOG - clear visibility
             
             const container = document.getElementById('canvas-container');
             camera = new THREE.PerspectiveCamera(
@@ -454,6 +497,8 @@
             document.getElementById('height-scale').addEventListener('input', updateHeightScale);
             document.getElementById('color-mode').addEventListener('change', updateColorMode);
             document.getElementById('color-palette').addEventListener('change', updateColorPalette);
+            document.getElementById('class-filter').addEventListener('change', updateClassFilter);
+            document.getElementById('class-filter').addEventListener('change', updateClassFilter);
             
             animate();
             loadData();
@@ -530,6 +575,7 @@
             
             const allPositions = [];
             const allColors = [];
+            const allClassifications = [];
             let totalLoaded = 0;
             
             // Load each chunk
@@ -542,10 +588,13 @@
                 const arrayBuffer = await response.arrayBuffer();
                 
                 // Parse chunk
-                const {positions, colors} = await parseChunkBinary(arrayBuffer, chunk, index);
+                const {positions, colors, classification} = await parseChunkBinary(arrayBuffer, chunk, index);
                 
                 allPositions.push(positions);
                 allColors.push(colors);
+                if (classification) {
+                    allClassifications.push(classification);
+                }
                 totalLoaded += chunk.point_count;
                 
                 // Update visual feedback
@@ -561,17 +610,26 @@
             updateLoadingText('Combining all chunks...');
             const combinedPositions = new Float32Array(totalLoaded * 3);
             const combinedColors = new Float32Array(totalLoaded * 3);
+            const combinedClassification = allClassifications.length > 0 ? new Uint8Array(totalLoaded) : null;
             
-            let offset = 0;
+            let posOffset = 0;
+            let classOffset = 0;
             for (let i = 0; i < allPositions.length; i++) {
-                combinedPositions.set(allPositions[i], offset);
-                combinedColors.set(allColors[i], offset);
-                offset += allPositions[i].length;
+                combinedPositions.set(allPositions[i], posOffset);
+                combinedColors.set(allColors[i], posOffset);
+                if (combinedClassification && allClassifications[i]) {
+                    combinedClassification.set(allClassifications[i], classOffset);
+                    classOffset += allClassifications[i].length;
+                }
+                posOffset += allPositions[i].length;
             }
             
             pointsData.positions = combinedPositions;
             pointsData.colors = combinedColors;
             pointsData.originalColors = new Float32Array(combinedColors);
+            pointsData.classification = combinedClassification;
+            
+            console.log('Classification data:', combinedClassification ? 'Available' : 'Not available');
             
             // Final render with all points
             updateLoadingText('Rendering full point cloud...');
@@ -595,6 +653,7 @@
             offset += 1;
             
             const hasColors = (flags & 1) !== 0;
+            const hasClassification = (flags & 2) !== 0;
             const isQuantized = (flags & 8) !== 0;
             
             // Read quantization params from file (but we'll use global ones from index)
@@ -656,7 +715,16 @@
                 }
             }
             
-            return {positions, colors};
+            // Read classification if available
+            const classification = hasClassification ? new Uint8Array(numPoints) : null;
+            if (hasClassification) {
+                for (let i = 0; i < numPoints; i++) {
+                    classification[i] = dataView.getUint8(offset++);
+                }
+                console.log(`Chunk ${chunkInfo.index}: Has classification data`);
+            }
+            
+            return {positions, colors, classification};
         }
         
         async function loadBinaryData() {
@@ -929,15 +997,37 @@
             if (currentColorMode === 'rgb') {
                 colors.set(pointsData.originalColors);
             } else if (currentColorMode === 'elevation') {
+                // Y is elevation (up) - use Y for height coloring
+                const yValues = [];
                 for (let i = 0; i < numPoints; i++) {
-                    const z = pointsData.positions[i * 3 + 2];
-                    const t = metadata ? 
-                        (z - metadata.bounds.min[2]) / (metadata.bounds.max[2] - metadata.bounds.min[2]) :
-                        z / 100;
+                    yValues.push(pointsData.positions[i * 3 + 1]);  // Y is up
+                }
+                const yMin = Math.min(...yValues);
+                const yMax = Math.max(...yValues);
+                
+                for (let i = 0; i < numPoints; i++) {
+                    const elevation = pointsData.positions[i * 3 + 1];  // Y axis
+                    const t = (elevation - yMin) / (yMax - yMin);
                     const color = getColorForValue(t, currentPalette);
                     colors[i * 3] = color.r;
                     colors[i * 3 + 1] = color.g;
                     colors[i * 3 + 2] = color.b;
+                }
+            } else if (currentColorMode === 'classification') {
+                if (!pointsData.classification || pointsData.classification.length === 0) {
+                    alert('No classification data available');
+                    document.getElementById('color-mode').value = 'rgb';
+                    colors.set(pointsData.originalColors);
+                } else {
+                    // Color by classification
+                    for (let i = 0; i < numPoints; i++) {
+                        const classId = pointsData.classification[i];
+                        const classColor = classificationColors[classId] || classificationColors[1];
+                        colors[i * 3] = classColor.r;
+                        colors[i * 3 + 1] = classColor.g;
+                        colors[i * 3 + 2] = classColor.b;
+                    }
+                    console.log('Colored by classification');
                 }
             }
             
@@ -950,6 +1040,58 @@
             if (currentColorMode === 'elevation') {
                 updateColorMode({ target: { value: 'elevation' }});
             }
+        }
+        
+        function updateClassFilter(e) {
+            currentClassFilter = e.target.value;
+            
+            if (!pointCloud || !pointsData.positions || !pointsData.classification) {
+                if (currentClassFilter !== 'all') {
+                    alert('No classification data available in this dataset');
+                    e.target.value = 'all';
+                }
+                return;
+            }
+            
+            const numPoints = pointsData.positions.length / 3;
+            
+            if (currentClassFilter === 'all') {
+                // Show all points
+                pointCloud.geometry.setAttribute('position', new THREE.BufferAttribute(pointsData.positions, 3));
+                pointCloud.geometry.setAttribute('color', new THREE.BufferAttribute(pointsData.colors, 3));
+            } else {
+                // Filter by classification
+                const classId = parseInt(currentClassFilter);
+                const filteredPositions = [];
+                const filteredColors = [];
+                
+                for (let i = 0; i < numPoints; i++) {
+                    if (pointsData.classification[i] === classId) {
+                        filteredPositions.push(
+                            pointsData.positions[i * 3],
+                            pointsData.positions[i * 3 + 1],
+                            pointsData.positions[i * 3 + 2]
+                        );
+                        filteredColors.push(
+                            pointsData.colors[i * 3],
+                            pointsData.colors[i * 3 + 1],
+                            pointsData.colors[i * 3 + 2]
+                        );
+                    }
+                }
+                
+                const positions = new Float32Array(filteredPositions);
+                const colors = new Float32Array(filteredColors);
+                
+                pointCloud.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                pointCloud.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                
+                console.log(`Filtered to class ${classId}: ${positions.length / 3} points`);
+            }
+            
+            pointCloud.geometry.attributes.position.needsUpdate = true;
+            pointCloud.geometry.attributes.color.needsUpdate = true;
+            pointCloud.geometry.computeBoundingSphere();
         }
         
         function updateProgress(percent) {

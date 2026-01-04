@@ -1,0 +1,1293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Montreal LiDAR 3D Viewer</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            --bg-light: #ffffff;
+            --bg-panel: rgba(255, 255, 255, 0.95);
+            --accent: #2563eb;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --border: #e2e8f0;
+            --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-light);
+            color: var(--text-primary);
+            overflow: hidden;
+        }
+        
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        #controls {
+            position: fixed;
+            top: 24px;
+            right: 24px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            min-width: 260px;
+            max-width: 300px;
+            backdrop-filter: blur(12px);
+            box-shadow: var(--shadow);
+            z-index: 100;
+            transition: all 0.2s ease;
+        }
+        
+        #controls.minimized .control-content {
+            display: none;
+        }
+        
+        #controls.minimized {
+            min-width: auto;
+            padding: 12px 16px;
+        }
+        
+        .control-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .control-header h2 {
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            color: var(--text-primary);
+        }
+        
+        .toggle-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        
+        .toggle-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: rgba(37, 99, 235, 0.05);
+        }
+        
+        .control-group {
+            margin-bottom: 18px;
+        }
+        
+        .control-group label {
+            display: block;
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            height: 2px;
+            background: var(--border);
+            border-radius: 2px;
+            outline: none;
+            -webkit-appearance: none;
+            cursor: pointer;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: var(--accent);
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid white;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: var(--accent);
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid white;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        .value-display {
+            display: inline-block;
+            float: right;
+            font-size: 11px;
+            color: var(--accent);
+            font-weight: 500;
+        }
+        
+        select, button {
+            width: 100%;
+            padding: 10px 12px;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 400;
+        }
+        
+        select:hover, select:focus {
+            border-color: var(--accent);
+            outline: none;
+        }
+        
+        button {
+            background: var(--accent);
+            border: none;
+            color: white;
+            font-weight: 500;
+            margin-top: 8px;
+        }
+        
+        button:hover {
+            background: #1d4ed8;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+        }
+        
+        #info {
+            position: fixed;
+            bottom: 24px;
+            left: 24px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px 20px;
+            backdrop-filter: blur(12px);
+            box-shadow: var(--shadow);
+            max-width: 350px;
+        }
+        
+        #info h3 {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            color: var(--text-primary);
+        }
+        
+        #info p {
+            font-size: 12px;
+            line-height: 1.6;
+            color: var(--text-secondary);
+            margin: 6px 0;
+        }
+        
+        .stat {
+            color: var(--accent);
+            font-weight: 500;
+        }
+        
+        #loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-light);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            transition: opacity 0.5s ease;
+        }
+        
+        #loading.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        #loading-text {
+            margin-top: 20px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+        
+        #progress-bar {
+            width: 300px;
+            height: 3px;
+            background: var(--border);
+            border-radius: 3px;
+            margin-top: 16px;
+            overflow: hidden;
+        }
+        
+        #progress-fill {
+            height: 100%;
+            width: 0%;
+            background: var(--accent);
+            transition: width 0.3s ease;
+        }
+        
+        #header {
+            position: fixed;
+            top: 24px;
+            left: 24px;
+            z-index: 50;
+        }
+        
+        #header h1 {
+            font-size: 20px;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+            color: var(--text-primary);
+            margin: 0;
+        }
+        
+        #header p {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+            font-weight: 400;
+        }
+        
+        @media (max-width: 768px) {
+            #controls {
+                width: calc(100% - 40px);
+                max-width: 320px;
+            }
+            
+            #info {
+                max-width: calc(100% - 40px);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">
+        <div class="spinner"></div>
+        <div id="loading-text">Loading LiDAR Data</div>
+        <div id="progress-bar">
+            <div id="progress-fill"></div>
+        </div>
+    </div>
+    
+    <div id="header">
+        <h1>Montreal LiDAR</h1>
+        <p>3D Point Cloud Viewer</p>
+    </div>
+    
+    <div id="canvas-container"></div>
+    
+    <div id="controls">
+        <div class="control-header">
+            <h2>Controls</h2>
+            <button class="toggle-btn" onclick="toggleControls()">Minimize</button>
+        </div>
+        
+        <div class="control-content">
+        <div class="control-group">
+            <label>Point Size <span class="value-display" id="size-value">1.5</span></label>
+            <input type="range" id="point-size" min="0.1" max="3" step="0.1" value="1.5">
+        </div>
+        
+        <div class="control-group">
+            <label>Height Exaggeration <span class="value-display" id="height-value">1.0x</span></label>
+            <input type="range" id="height-scale" min="0.5" max="3" step="0.1" value="1">
+        </div>
+        
+        <div class="control-group">
+            <label>Color Mode</label>
+            <select id="color-mode">
+                <option value="rgb">True Color (RGB)</option>
+                <option value="elevation">Elevation</option>
+                <option value="classification">Classification</option>
+            </select>
+        </div>
+        
+        <div class="control-group" id="class-filter-group">
+            <label>Show Classes</label>
+            <div style="max-height: 200px; overflow-y: auto; padding: 8px; background: white; border: 1px solid var(--border); border-radius: 6px;">
+                <label style="display: flex; align-items: center; margin: 6px 0; cursor: pointer; text-transform: none; font-size: 12px;">
+                    <input type="checkbox" class="class-checkbox" value="1" checked style="margin-right: 8px;">
+                    <span style="color: #b3b3b3;">◼</span>&nbsp;Unclassified
+                </label>
+                <label style="display: flex; align-items: center; margin: 6px 0; cursor: pointer; text-transform: none; font-size: 12px;">
+                    <input type="checkbox" class="class-checkbox" value="2" checked style="margin-right: 8px;">
+                    <span style="color: #996633;">◼</span>&nbsp;Ground
+                </label>
+                <label style="display: flex; align-items: center; margin: 6px 0; cursor: pointer; text-transform: none; font-size: 12px;">
+                    <input type="checkbox" class="class-checkbox" value="6" checked style="margin-right: 8px;">
+                    <span style="color: #e64d4d;">◼</span>&nbsp;Buildings
+                </label>
+            </div>
+        </div>
+
+        <!-- NEW: Toggle for collision mesh -->
+        <div class="control-group">
+            <label style="display: flex; align-items: center; cursor: pointer; text-transform: none;">
+                <input type="checkbox" id="show-mesh" checked style="margin-right: 8px;">
+                Show Collision Mesh
+            </label>
+        </div>
+        
+        <div class="control-group">
+            <label>Elevation Palette</label>
+            <select id="color-palette">
+                <option value="viridis">Viridis</option>
+                <option value="plasma">Plasma</option>
+                <option value="inferno">Inferno</option>
+                <option value="turbo">Turbo</option>
+                <option value="cool">Cool</option>
+            </select>
+        </div>
+        
+        <button onclick="resetCamera()">Reset View</button>
+        <button onclick="toggleFullscreen()">Fullscreen</button>
+        </div>
+    </div>
+    
+    <div id="info">
+        <h3>Dataset Info</h3>
+        <p>File: <span class="stat" id="filename">Loading...</span></p>
+        <p>Points: <span class="stat" id="point-count">Loading...</span></p>
+        <p>Loaded: <span class="stat" id="loaded-count">0</span></p>
+        <p>Area: <span class="stat">1km × 1km tile</span></p>
+        <p>Location: <span class="stat">Montreal, QC</span></p>
+        <p style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
+            <strong>Mouse Controls:</strong><br>
+            Left Click + Drag: Rotate<br>
+            Right Click + Drag: Pan<br>
+            Scroll: Zoom<br>
+            <strong style="margin-top: 8px; display: block;">Keyboard:</strong>
+            Arrow Keys: Move camera<br>
+            W/S: Move up/down
+        </p>
+    </div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <!-- NEW: GLTFLoader (must be loaded before your main script uses THREE.GLTFLoader) -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+    
+    <script>
+        let scene, camera, renderer, controls, pointCloud;
+
+        // NEW: Will hold the GLB mesh
+        let collisionMesh = null;
+
+        let metadata = null;
+        let currentColorMode = 'rgb';
+        let currentPalette = 'viridis';
+        let currentClassFilter = 'all';
+        let pointsData = {
+            positions: [],
+            colors: [],
+            originalColors: [],
+            classification: []
+        };
+        
+        const CHUNK_SIZE = 100000; // Load 100k points at a time
+        
+        // Classification colors (ASPRS standard)
+        const classificationColors = {
+            0: { r: 0.5, g: 0.5, b: 0.5, name: 'Never Classified' },      // Gray
+            1: { r: 0.7, g: 0.7, b: 0.7, name: 'Unclassified' },          // Light gray
+            2: { r: 0.6, g: 0.4, b: 0.2, name: 'Ground' },                 // Brown
+            3: { r: 0.4, g: 0.8, b: 0.4, name: 'Low Vegetation' },        // Light green
+            4: { r: 0.2, g: 0.7, b: 0.2, name: 'Medium Vegetation' },     // Green
+            5: { r: 0.1, g: 0.5, b: 0.1, name: 'High Vegetation' },       // Dark green
+            6: { r: 0.9, g: 0.3, b: 0.3, name: 'Building' },              // Red
+            7: { r: 0.9, g: 0.9, b: 0.1, name: 'Low Point (Noise)' },     // Yellow
+            8: { r: 0.5, g: 0.5, b: 0.5, name: 'Reserved' },              // Gray
+            9: { r: 0.2, g: 0.4, b: 0.9, name: 'Water' },                 // Blue
+            10: { r: 0.3, g: 0.3, b: 0.3, name: 'Rail' },                 // Dark gray
+            11: { r: 0.4, g: 0.4, b: 0.4, name: 'Road Surface' },         // Medium gray
+            17: { r: 0.8, g: 0.6, b: 0.4, name: 'Bridge Deck' },          // Tan
+            18: { r: 1.0, g: 0.5, b: 0.0, name: 'High Noise' }            // Orange
+        };
+        
+        const palettes = {
+            viridis: ['#440154', '#414487', '#2a788e', '#22a884', '#7ad151', '#fde725'],
+            plasma: ['#0d0887', '#6a00a8', '#b12a90', '#e16462', '#fca636', '#f0f921'],
+            inferno: ['#000004', '#420a68', '#932667', '#dd513a', '#fca50a', '#fcffa4'],
+            turbo: ['#30123b', '#4662d7', '#36a2d4', '#1ae4b6', '#72fe5e', '#faba39'],
+            cool: ['#00ffff', '#0099ff', '#0033ff', '#6600ff', '#9900ff', '#cc00ff']
+        };
+
+        // NEW: Load collision mesh from GitHub Release (GLB)
+        async function loadCollisionMesh() {
+            try {
+                console.log('Loading collision mesh from GitHub Release...');
+                
+                const loader = new THREE.GLTFLoader();
+
+                // Your provided URL
+                const meshUrl = 'https://github.com/evelynebrie/montreal-lidar-viewer/releases/download/Mesh/collision_world.glb';
+                
+                loader.load(
+                    meshUrl,
+                    (gltf) => {
+                        collisionMesh = gltf.scene;
+                        
+                        // Apply material to mesh - neutral gray
+                        collisionMesh.traverse((node) => {
+                            if (node.isMesh) {
+                                node.material = new THREE.MeshStandardMaterial({
+                                    vertexColors: true,
+                                    side: THREE.DoubleSide,
+                                    metalness: 0.0,
+                                    roughness: 0.9,
+                                    transparent: true,
+                                    opacity: 0.7 // Semi-transparent so LiDAR shows through
+                                });
+                            }
+                        });
+                        
+                        scene.add(collisionMesh);
+                        console.log('✓ Collision mesh loaded and added to scene');
+
+                        // Respect current UI toggle state if user has already clicked it
+                        const cb = document.getElementById('show-mesh');
+                        if (cb) collisionMesh.visible = cb.checked;
+                    },
+                    (progress) => {
+                        if (progress.total) {
+                            const percent = (progress.loaded / progress.total) * 100;
+                            console.log(`Loading mesh: ${percent.toFixed(0)}%`);
+                        } else {
+                            console.log(`Loading mesh: ${progress.loaded} bytes`);
+                        }
+                    },
+                    (error) => {
+                        console.error('Error loading mesh:', error);
+                    }
+                );
+            } catch (error) {
+                console.error('Failed to load collision mesh:', error);
+            }
+        }
+        
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xffffff);  // Pure white background
+            // NO FOG - clear visibility
+            
+            const container = document.getElementById('canvas-container');
+            camera = new THREE.PerspectiveCamera(
+                60,
+                window.innerWidth / window.innerHeight,
+                0.1,
+                10000
+            );
+            // Start closer to see the data immediately
+            camera.position.set(200, 150, 300);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+            
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.screenSpacePanning = false;
+            
+            // Bright, even lighting for maximum visibility
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(100, 200, 100);
+            scene.add(directionalLight);
+            
+            // Add second light from opposite side
+            const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.5);
+            directionalLight2.position.set(-100, 100, -100);
+            scene.add(directionalLight2);
+
+            // NEW: Load the GLB mesh after lights exist (so it renders nicely)
+            loadCollisionMesh();
+            
+            const gridHelper = new THREE.GridHelper(1000, 50, 0xcccccc, 0xe5e5e5);
+            gridHelper.material.opacity = 0.3;
+            gridHelper.material.transparent = true;
+            scene.add(gridHelper);
+            
+            window.addEventListener('resize', onWindowResize);
+            
+            // Add keyboard controls
+            window.addEventListener('keydown', onKeyDown);
+            
+            document.getElementById('point-size').addEventListener('input', updatePointSize);
+            document.getElementById('height-scale').addEventListener('input', updateHeightScale);
+            document.getElementById('color-mode').addEventListener('change', updateColorMode);
+            document.getElementById('color-palette').addEventListener('change', updateColorPalette);
+            
+            // Add event listeners to all classification checkboxes
+            document.querySelectorAll('.class-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', updateClassFilter);
+            });
+
+            // NEW: Mesh visibility toggle
+            const meshToggle = document.getElementById('show-mesh');
+            if (meshToggle) {
+                meshToggle.addEventListener('change', (e) => {
+                    if (collisionMesh) {
+                        collisionMesh.visible = e.target.checked;
+                    }
+                });
+            }
+            
+            animate();
+            loadData();
+        }
+        
+        async function loadData() {
+            try {
+                updateProgress(5);
+                updateLoadingText('Checking for chunked data...');
+                
+                // Try to load chunked format first
+                try {
+                    const indexResponse = await fetch('web_data/chunks_index.json');
+                    const chunksIndex = await indexResponse.json();
+                    console.log('Chunked data found, loading...');
+                    await loadChunkedData(chunksIndex);
+                    return;
+                } catch (e) {
+                    console.log('No chunked data, trying compressed sample...');
+                }
+                
+                updateLoadingText('Loading metadata...');
+                
+                // Load metadata
+                const metaResponse = await fetch('web_data/metadata.json');
+                metadata = await metaResponse.json();
+                
+                document.getElementById('filename').textContent = metadata.filename;
+                document.getElementById('point-count').textContent = metadata.point_count.toLocaleString();
+                
+                updateProgress(15);
+                updateLoadingText('Loading compressed data...');
+                
+                // Try to load the compressed JSON sample
+                try {
+                    const response = await fetch('web_data/points_sample.json.gz');
+                    const compressedData = await response.arrayBuffer();
+                    
+                    updateProgress(40);
+                    updateLoadingText('Decompressing data...');
+                    
+                    // Decompress using pako
+                    const decompressed = pako.inflate(new Uint8Array(compressedData), { to: 'string' });
+                    const data = JSON.parse(decompressed);
+                    
+                    updateProgress(70);
+                    updateLoadingText('Processing points...');
+                    
+                    await processPointData(data);
+                    
+                } catch (gzError) {
+                    console.log('Compressed file not available, trying binary...');
+                    updateLoadingText('Loading binary data...');
+                    await loadBinaryData();
+                }
+                
+                updateProgress(100);
+                setTimeout(() => {
+                    document.getElementById('loading').classList.add('hidden');
+                }, 500);
+                
+            } catch (error) {
+                console.error('Error loading data:', error);
+                updateLoadingText('Error: ' + error.message);
+                document.getElementById('loading-text').style.color = '#ff0000';
+            }
+        }
+        
+        async function loadChunkedData(index) {
+            document.getElementById('filename').textContent = index.filename;
+            document.getElementById('point-count').textContent = index.total_points.toLocaleString();
+            
+            updateLoadingText(`Loading chunk 1/${index.num_chunks}...`);
+            
+            const allPositions = [];
+            const allColors = [];
+            const allClassifications = [];
+            let totalLoaded = 0;
+            
+            // Load each chunk
+            for (let i = 0; i < index.num_chunks; i++) {
+                const chunk = index.chunks[i];
+                updateProgress(10 + (i / index.num_chunks) * 80);
+                updateLoadingText(`Loading chunk ${i + 1}/${index.num_chunks} (${chunk.point_count.toLocaleString()} points)`);
+                
+                const response = await fetch(`web_data/chunks/${chunk.filename}`);
+                const arrayBuffer = await response.arrayBuffer();
+                
+                // Parse chunk
+                const {positions, colors, classification} = await parseChunkBinary(arrayBuffer, chunk, index);
+                
+                allPositions.push(positions);
+                allColors.push(colors);
+                if (classification) {
+                    allClassifications.push(classification);
+                }
+                totalLoaded += chunk.point_count;
+                
+                // Update visual feedback
+                document.getElementById('loaded-count').textContent = totalLoaded.toLocaleString();
+                
+                // Render first chunk immediately for instant feedback
+                if (i === 0) {
+                    createPointCloud(positions, colors);
+                }
+            }
+            
+            // Combine all chunks
+            updateLoadingText('Combining all chunks...');
+            const combinedPositions = new Float32Array(totalLoaded * 3);
+            const combinedColors = new Float32Array(totalLoaded * 3);
+            const combinedClassification = allClassifications.length > 0 ? new Uint8Array(totalLoaded) : null;
+            
+            let posOffset = 0;
+            let classOffset = 0;
+            for (let i = 0; i < allPositions.length; i++) {
+                combinedPositions.set(allPositions[i], posOffset);
+                combinedColors.set(allColors[i], posOffset);
+                if (combinedClassification && allClassifications[i]) {
+                    combinedClassification.set(allClassifications[i], classOffset);
+                    classOffset += allClassifications[i].length;
+                }
+                posOffset += allPositions[i].length;
+            }
+            
+            pointsData.positions = combinedPositions;
+            pointsData.colors = combinedColors;
+            pointsData.originalColors = new Float32Array(combinedColors);
+            pointsData.classification = combinedClassification;
+            
+            console.log('Classification data:', combinedClassification ? 'Available' : 'Not available');
+            
+            // Final render with all points
+            updateLoadingText('Rendering full point cloud...');
+            createPointCloud(combinedPositions, combinedColors);
+            
+            updateProgress(100);
+            setTimeout(() => {
+                document.getElementById('loading').classList.add('hidden');
+            }, 500);
+        }
+        
+        async function parseChunkBinary(arrayBuffer, chunkInfo, index) {
+            const dataView = new DataView(arrayBuffer);
+            let offset = 0;
+            
+            // Read header
+            const numPoints = dataView.getUint32(offset, true);
+            offset += 4;
+            
+            const flags = dataView.getUint8(offset);
+            offset += 1;
+            
+            const hasColors = (flags & 1) !== 0;
+            const hasClassification = (flags & 2) !== 0;
+            const isQuantized = (flags & 8) !== 0;
+            
+            // Read quantization params from file (but we'll use global ones from index)
+            const file_mins = [
+                dataView.getFloat32(offset, true),
+                dataView.getFloat32(offset + 4, true),
+                dataView.getFloat32(offset + 8, true)
+            ];
+            offset += 12;
+            
+            const file_ranges = [
+                dataView.getFloat32(offset, true),
+                dataView.getFloat32(offset + 4, true),
+                dataView.getFloat32(offset + 8, true)
+            ];
+            offset += 12;
+            
+            // USE GLOBAL quantization params for consistency across all chunks
+            const mins = index.quantization.mins;
+            const ranges = index.quantization.ranges;
+            
+            console.log(`Chunk ${chunkInfo.index}: Using global quant params`);
+            
+            // Read and dequantize positions
+            const positions = new Float32Array(numPoints * 3);
+            for (let i = 0; i < numPoints; i++) {
+                const x_q = dataView.getUint16(offset, true); offset += 2;
+                const y_q = dataView.getUint16(offset, true); offset += 2;
+                const z_q = dataView.getUint16(offset, true); offset += 2;
+                
+                // Dequantize using GLOBAL bounds
+                // Data is already in correct format (Y=up) from converter
+                positions[i * 3] = (x_q / 65535.0) * ranges[0] + mins[0];
+                positions[i * 3 + 1] = (y_q / 65535.0) * ranges[1] + mins[1];
+                positions[i * 3 + 2] = (z_q / 65535.0) * ranges[2] + mins[2];
+            }
+            
+            // Read colors
+            const colors = new Float32Array(numPoints * 3);
+            if (hasColors) {
+                console.log(`Chunk ${chunkInfo.index}: Loading RGB colors`);
+                for (let i = 0; i < numPoints; i++) {
+                    colors[i * 3] = dataView.getUint8(offset++) / 255.0;
+                    colors[i * 3 + 1] = dataView.getUint8(offset++) / 255.0;
+                    colors[i * 3 + 2] = dataView.getUint8(offset++) / 255.0;
+                }
+            } else {
+                console.log(`Chunk ${chunkInfo.index}: Using elevation coloring`);
+                // Y is now elevation (was Z in original LiDAR, swapped in converter)
+                const globalElevMin = index.bounds.min[2];  // Original Z min
+                const globalElevMax = index.bounds.max[2];  // Original Z max
+                for (let i = 0; i < numPoints; i++) {
+                    const elevation = positions[i * 3 + 1];  // Y is elevation
+                    const t = (elevation - globalElevMin) / (globalElevMax - globalElevMin);
+                    const color = getColorForValue(Math.max(0, Math.min(1, t)), 'viridis');
+                    colors[i * 3] = color.r;
+                    colors[i * 3 + 1] = color.g;
+                    colors[i * 3 + 2] = color.b;
+                }
+            }
+            
+            // Read classification if available
+            const classification = hasClassification ? new Uint8Array(numPoints) : null;
+            if (hasClassification) {
+                for (let i = 0; i < numPoints; i++) {
+                    classification[i] = dataView.getUint8(offset++);
+                }
+                console.log(`Chunk ${chunkInfo.index}: Has classification data`);
+            }
+            
+            return {positions, colors, classification};
+        }
+        
+        async function loadBinaryData() {
+            // Stream the binary file in chunks
+            const response = await fetch('web_data/points_optimized.bin');
+            const reader = response.body.getReader();
+            const contentLength = +response.headers.get('Content-Length');
+            
+            let receivedLength = 0;
+            let chunks = [];
+            
+            while(true) {
+                const {done, value} = await reader.read();
+                
+                if (done) break;
+                
+                chunks.push(value);
+                receivedLength += value.length;
+                
+                const progress = 15 + (receivedLength / contentLength) * 50;
+                updateProgress(progress);
+                updateLoadingText(`Loading: ${(receivedLength / 1024 / 1024).toFixed(1)}MB / ${(contentLength / 1024 / 1024).toFixed(1)}MB`);
+            }
+            
+            updateProgress(70);
+            updateLoadingText('Processing optimized data...');
+            
+            // Combine chunks
+            const allChunks = new Uint8Array(receivedLength);
+            let position = 0;
+            for(let chunk of chunks) {
+                allChunks.set(chunk, position);
+                position += chunk.length;
+            }
+            
+            // Parse optimized binary
+            await parseOptimizedBinary(allChunks.buffer);
+        }
+        
+        async function parseOptimizedBinary(arrayBuffer) {
+            const dataView = new DataView(arrayBuffer);
+            let offset = 0;
+            
+            // Read header
+            const numPoints = dataView.getUint32(offset, true);
+            offset += 4;
+            
+            const flags = dataView.getUint8(offset);
+            offset += 1;
+            
+            const hasColors = (flags & 1) !== 0;
+            const hasClassification = (flags & 2) !== 0;
+            const hasIntensity = (flags & 4) !== 0;
+            const isQuantized = (flags & 8) !== 0;
+            
+            updateLoadingText(`Processing ${numPoints.toLocaleString()} points...`);
+            
+            let mins = [0, 0, 0];
+            let ranges = [1, 1, 1];
+            
+            if (isQuantized) {
+                // Read quantization parameters
+                for (let i = 0; i < 3; i++) {
+                    mins[i] = dataView.getFloat32(offset, true);
+                    offset += 4;
+                    ranges[i] = dataView.getFloat32(offset, true);
+                    offset += 4;
+                }
+                console.log('Quantized format detected - dequantizing positions...');
+            }
+            
+            // Process in chunks to avoid blocking
+            const positions = new Float32Array(numPoints * 3);
+            
+            for (let chunk = 0; chunk < Math.ceil(numPoints / CHUNK_SIZE); chunk++) {
+                const startIdx = chunk * CHUNK_SIZE;
+                const endIdx = Math.min((chunk + 1) * CHUNK_SIZE, numPoints);
+                const chunkSize = endIdx - startIdx;
+                
+                // Read and dequantize positions
+                for (let i = 0; i < chunkSize; i++) {
+                    const idx = startIdx + i;
+                    if (isQuantized) {
+                        // Read uint16 and dequantize to float32
+                        const x_q = dataView.getUint16(offset, true);
+                        offset += 2;
+                        const y_q = dataView.getUint16(offset, true);
+                        offset += 2;
+                        const z_q = dataView.getUint16(offset, true);
+                        offset += 2;
+                        
+                        positions[idx * 3] = (x_q / 65535.0) * ranges[0] + mins[0];
+                        positions[idx * 3 + 1] = (y_q / 65535.0) * ranges[1] + mins[1];
+                        positions[idx * 3 + 2] = (z_q / 65535.0) * ranges[2] + mins[2];
+                    } else {
+                        // Read float32 directly
+                        positions[idx * 3] = dataView.getFloat32(offset, true);
+                        offset += 4;
+                        positions[idx * 3 + 1] = dataView.getFloat32(offset, true);
+                        offset += 4;
+                        positions[idx * 3 + 2] = dataView.getFloat32(offset, true);
+                        offset += 4;
+                    }
+                }
+                
+                const progress = 70 + (chunk / Math.ceil(numPoints / CHUNK_SIZE)) * 15;
+                updateProgress(progress);
+                
+                // Allow UI to update
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
+            
+            // Read colors if available
+            const colors = new Float32Array(numPoints * 3);
+            
+            if (hasColors) {
+                updateLoadingText('Loading RGB colors...');
+                for (let chunk = 0; chunk < Math.ceil(numPoints / CHUNK_SIZE); chunk++) {
+                    const startIdx = chunk * CHUNK_SIZE;
+                    const endIdx = Math.min((chunk + 1) * CHUNK_SIZE, numPoints);
+                    const chunkSize = endIdx - startIdx;
+                    
+                    for (let i = 0; i < chunkSize; i++) {
+                        const idx = startIdx + i;
+                        colors[idx * 3] = dataView.getUint8(offset++) / 255.0;
+                        colors[idx * 3 + 1] = dataView.getUint8(offset++) / 255.0;
+                        colors[idx * 3 + 2] = dataView.getUint8(offset++) / 255.0;
+                    }
+                    
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                }
+            } else {
+                // Generate colors from elevation
+                updateLoadingText('Generating elevation colors...');
+                const zMin = Math.min(...Array.from(positions).filter((_, i) => i % 3 === 2));
+                const zMax = Math.max(...Array.from(positions).filter((_, i) => i % 3 === 2));
+                
+                for (let i = 0; i < numPoints; i++) {
+                    const z = positions[i * 3 + 2];
+                    const t = (z - zMin) / (zMax - zMin);
+                    const color = getColorForValue(t, 'viridis');
+                    colors[i * 3] = color.r;
+                    colors[i * 3 + 1] = color.g;
+                    colors[i * 3 + 2] = color.b;
+                }
+            }
+            
+            pointsData.positions = positions;
+            pointsData.colors = colors;
+            pointsData.originalColors = new Float32Array(colors);
+            
+            updateProgress(90);
+            updateLoadingText('Rendering point cloud...');
+            
+            createPointCloud(positions, colors);
+            document.getElementById('loaded-count').textContent = numPoints.toLocaleString();
+        }
+        
+        async function processPointData(data) {
+            const positions = new Float32Array(data.positions);
+            const numPoints = positions.length / 3;
+            
+            let colors;
+            if (data.colors && data.colors.length > 0) {
+                colors = new Float32Array(data.colors);
+            } else {
+                colors = new Float32Array(numPoints * 3);
+                for (let i = 0; i < numPoints; i++) {
+                    const z = positions[i * 3 + 2];
+                    const t = metadata ? 
+                        (z - metadata.bounds.min[2]) / (metadata.bounds.max[2] - metadata.bounds.min[2]) :
+                        z / 100;
+                    const color = getColorForValue(t, 'viridis');
+                    colors[i * 3] = color.r;
+                    colors[i * 3 + 1] = color.g;
+                    colors[i * 3 + 2] = color.b;
+                }
+            }
+            
+            pointsData.positions = positions;
+            pointsData.colors = colors;
+            pointsData.originalColors = new Float32Array(colors);
+            
+            updateProgress(90);
+            updateLoadingText('Rendering...');
+            
+            createPointCloud(positions, colors);
+            document.getElementById('loaded-count').textContent = numPoints.toLocaleString();
+        }
+        
+        function createPointCloud(positions, colors) {
+            if (pointCloud) {
+                scene.remove(pointCloud);
+                pointCloud.geometry.dispose();
+                pointCloud.material.dispose();
+            }
+            
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            const material = new THREE.PointsMaterial({
+                size: 1.5,
+                vertexColors: true,
+                sizeAttenuation: true
+            });
+            
+            pointCloud = new THREE.Points(geometry, material);
+            scene.add(pointCloud);
+            
+            // Center camera on the point cloud
+            geometry.computeBoundingBox();
+            const box = geometry.boundingBox;
+            const center = new THREE.Vector3();
+            box.getCenter(center);
+            controls.target.copy(center);
+            
+            const size = new THREE.Vector3();
+            box.getSize(size);
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const fov = camera.fov * (Math.PI / 180);
+            
+            // Calculate distance - CLOSER for better initial view
+            let cameraDistance = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+            cameraDistance *= 1.8; // Closer view - see more detail immediately
+            
+            // Position camera at nice viewing angle
+            camera.position.set(
+                center.x + cameraDistance * 0.5,  // Slightly to the side
+                center.y + cameraDistance * 1.2,  // Above
+                center.z + cameraDistance * 0.8   // Back
+            );
+            
+            // Look at the center
+            camera.lookAt(center);
+            
+            // Set the "up" direction to positive Y
+            camera.up.set(0, 1, 0);
+            
+            console.log(`Camera positioned at: [${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)}]`);
+            console.log(`Looking at center: [${center.x.toFixed(1)}, ${center.y.toFixed(1)}, ${center.z.toFixed(1)}]`);
+            console.log(`Point cloud size: [${size.x.toFixed(1)}, ${size.y.toFixed(1)}, ${size.z.toFixed(1)}]`);
+        }
+        
+        function getColorForValue(value, paletteName) {
+            const palette = palettes[paletteName];
+            const t = Math.max(0, Math.min(1, value));
+            const index = Math.min(Math.floor(t * (palette.length - 1)), palette.length - 1);
+            const nextIndex = Math.min(index + 1, palette.length - 1);
+            const localT = (t * (palette.length - 1)) - index;
+            
+            const color1 = new THREE.Color(palette[index]);
+            const color2 = new THREE.Color(palette[nextIndex]);
+            
+            return {
+                r: color1.r + (color2.r - color1.r) * localT,
+                g: color1.g + (color2.g - color1.g) * localT,
+                b: color1.b + (color2.b - color1.b) * localT
+            };
+        }
+        
+        function updateColorMode(e) {
+            currentColorMode = e.target.value;
+            
+            if (!pointCloud || !pointsData.positions) return;
+            
+            const numPoints = pointsData.positions.length / 3;
+            const colors = new Float32Array(numPoints * 3);
+            
+            if (currentColorMode === 'rgb') {
+                colors.set(pointsData.originalColors);
+            } else if (currentColorMode === 'elevation') {
+                // Y is elevation (up) - use Y for height coloring
+                const yValues = [];
+                for (let i = 0; i < numPoints; i++) {
+                    yValues.push(pointsData.positions[i * 3 + 1]);  // Y is up
+                }
+                const yMin = Math.min(...yValues);
+                const yMax = Math.max(...yValues);
+                
+                for (let i = 0; i < numPoints; i++) {
+                    const elevation = pointsData.positions[i * 3 + 1];  // Y axis
+                    const t = (elevation - yMin) / (yMax - yMin);
+                    const color = getColorForValue(t, currentPalette);
+                    colors[i * 3] = color.r;
+                    colors[i * 3 + 1] = color.g;
+                    colors[i * 3 + 2] = color.b;
+                }
+            } else if (currentColorMode === 'classification') {
+                if (!pointsData.classification || pointsData.classification.length === 0) {
+                    alert('No classification data available');
+                    document.getElementById('color-mode').value = 'rgb';
+                    colors.set(pointsData.originalColors);
+                } else {
+                    // Color by classification
+                    for (let i = 0; i < numPoints; i++) {
+                        const classId = pointsData.classification[i];
+                        const classColor = classificationColors[classId] || classificationColors[1];
+                        colors[i * 3] = classColor.r;
+                        colors[i * 3 + 1] = classColor.g;
+                        colors[i * 3 + 2] = classColor.b;
+                    }
+                    console.log('Colored by classification');
+                }
+            }
+            
+            pointCloud.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            pointsData.colors = colors;
+            
+            // Apply filter immediately
+            updateClassFilter();
+        }
+        
+        function updateColorPalette(e) {
+            currentPalette = e.target.value;
+            if (currentColorMode === 'elevation') {
+                updateColorMode({ target: { value: 'elevation' }});
+            }
+        }
+        
+        function updateClassFilter() {
+            if (!pointCloud || !pointsData.positions || !pointsData.classification || pointsData.classification.length === 0) {
+                return;
+            }
+            
+            // Get selected classes from checkboxes
+            const selectedClasses = new Set();
+            document.querySelectorAll('.class-checkbox:checked').forEach(checkbox => {
+                selectedClasses.add(parseInt(checkbox.value));
+            });
+            
+            // Always exclude noise (Class 7) - never show it
+            const numPoints = pointsData.positions.length / 3;
+            const filteredPositions = [];
+            const filteredColors = [];
+            
+            for (let i = 0; i < numPoints; i++) {
+                const classId = pointsData.classification[i];
+                
+                // Skip noise points (Class 7)
+                if (classId === 7) continue;
+                
+                // Include if in selected classes OR if showing all (no checkboxes checked means show all non-noise)
+                if (selectedClasses.size === 0 || selectedClasses.has(classId)) {
+                    filteredPositions.push(
+                        pointsData.positions[i * 3],
+                        pointsData.positions[i * 3 + 1],
+                        pointsData.positions[i * 3 + 2]
+                    );
+                    filteredColors.push(
+                        pointsData.colors[i * 3],
+                        pointsData.colors[i * 3 + 1],
+                        pointsData.colors[i * 3 + 2]
+                    );
+                }
+            }
+            
+            const positions = new Float32Array(filteredPositions);
+            const colors = new Float32Array(filteredColors);
+            
+            pointCloud.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            pointCloud.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            pointCloud.geometry.attributes.position.needsUpdate = true;
+            pointCloud.geometry.attributes.color.needsUpdate = true;
+            pointCloud.geometry.computeBoundingSphere();
+            
+            console.log(`Filtered: ${positions.length / 3} points (noise excluded, selected classes: ${Array.from(selectedClasses).join(', ') || 'all'})`);
+        }
+        
+        function updateProgress(percent) {
+            document.getElementById('progress-fill').style.width = percent + '%';
+        }
+        
+        function updateLoadingText(text) {
+            document.getElementById('loading-text').textContent = text;
+        }
+        
+        function updatePointSize(e) {
+            const size = parseFloat(e.target.value);
+            document.getElementById('size-value').textContent = size.toFixed(1);
+            if (pointCloud) {
+                pointCloud.material.size = size;
+            }
+        }
+        
+        function updateHeightScale(e) {
+            const scale = parseFloat(e.target.value);
+            document.getElementById('height-value').textContent = scale.toFixed(1) + 'x';
+            if (pointCloud) {
+                // Reset scale first
+                pointCloud.scale.set(1, 1, 1);
+                // Apply height exaggeration to Y axis (vertical/up)
+                pointCloud.scale.y = scale;
+            }
+        }
+        
+        function resetCamera() {
+            if (pointCloud) {
+                const box = new THREE.Box3().setFromObject(pointCloud);
+                const center = box.getCenter(new THREE.Vector3());
+                controls.target.copy(center);
+                
+                const size = box.getSize(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const fov = camera.fov * (Math.PI / 180);
+                let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+                cameraZ *= 1.5;
+                
+                camera.position.set(center.x + cameraZ, center.y + cameraZ/2, center.z + cameraZ);
+                camera.lookAt(center);
+            }
+        }
+        
+        function toggleControls() {
+            const controls = document.getElementById('controls');
+            const btn = controls.querySelector('.toggle-btn');
+            controls.classList.toggle('minimized');
+            btn.textContent = controls.classList.contains('minimized') ? 'Expand' : 'Minimize';
+        }
+        
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        function onKeyDown(event) {
+            const moveSpeed = 10; // Adjust speed as needed
+            
+            switch(event.key) {
+                case 'ArrowUp':
+                    camera.position.z -= moveSpeed;
+                    controls.target.z -= moveSpeed;
+                    break;
+                case 'ArrowDown':
+                    camera.position.z += moveSpeed;
+                    controls.target.z += moveSpeed;
+                    break;
+                case 'ArrowLeft':
+                    camera.position.x -= moveSpeed;
+                    controls.target.x -= moveSpeed;
+                    break;
+                case 'ArrowRight':
+                    camera.position.x += moveSpeed;
+                    controls.target.x += moveSpeed;
+                    break;
+                case 'w':
+                case 'W':
+                    camera.position.y += moveSpeed;
+                    controls.target.y += moveSpeed;
+                    break;
+                case 's':
+                case 'S':
+                    camera.position.y -= moveSpeed;
+                    controls.target.y -= moveSpeed;
+                    break;
+            }
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        
+        init();
+    </script>
+</body>
+</html>
